@@ -54,7 +54,7 @@ The client MUST exit with these codes:
 - 2: a usage error or a setting error.
 - 3: status 401 or 403.
 - 4: status 404.
-- 5: status 409.
+- 5: status 409 or 412.
 
 #### Scenario: Unknown device
 - **WHEN** a user removes a device ID that does not exist

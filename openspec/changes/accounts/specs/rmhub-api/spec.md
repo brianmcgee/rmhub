@@ -19,7 +19,9 @@ for a path under `/api/` with status 404.
 ### Requirement: JSON bodies
 Each request body and each response body of the rmhub API MUST be JSON with
 the media type `application/json`. A request with a body that is not valid
-JSON MUST get status 400.
+JSON MUST get status 400. An endpoint that a spec names as a content
+endpoint or a stream endpoint MUST follow the media types of that spec.
+Its error responses MUST be JSON.
 
 #### Scenario: Body is not JSON
 - **WHEN** a client sends `POST /api/v1/admin/users` with the body `name=x`
@@ -28,9 +30,9 @@ JSON MUST get status 400.
 ### Requirement: Error format
 Each error response MUST have this body:
 `{"error":{"code":"<code>","message":"<text>"}}`. The code MUST be one of
-`bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict` and
-`internal`. Each code MUST use the status 400, 401, 403, 404, 409 and 500,
-in that order.
+`bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`,
+`precondition_failed` and `internal`. Each code MUST use the status 400,
+401, 403, 404, 409, 412 and 500, in that order.
 
 #### Scenario: Unknown user
 - **WHEN** an admin client requests a user ID that does not exist
