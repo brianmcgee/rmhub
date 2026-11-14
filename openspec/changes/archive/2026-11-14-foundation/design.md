@@ -226,3 +226,31 @@ footprint. rustfs is the fallback.
   distinct versions put a write ID in the value.
 - [One HeadObject per key in `Exists`] → This is acceptable at personal
   scale. A later change can use a listing if a sync checks many keys.
+
+## Implementation Notes
+
+Decisions made during the implementation, for review:
+
+- The S3 state backend turns off the retries of the AWS SDK for each
+  conditional write. An SDK retry after a lost answer gets status 412
+  from the first attempt of the same request, and the backend would
+  report a conflict for a write that succeeded.
+- The S3 blob backend copies a body that cannot seek into a temporary
+  file in `<data_dir>/tmp` before the upload. The SigV4 signature and
+  the 409 retry need a seekable body, and a source that fails part way
+  never reaches the bucket.
+- The configuration has three keys that the spec does not name:
+  `blob.dir` (the spec example `blob.dirr` implies it), `state.path` and
+  `s3.path_style` (the design says that R2 needs path-style addressing).
+- The two listener addresses must differ. A listener with only one of
+  `tls_cert_file` and `tls_key_file` is a configuration error.
+- versitygw with its posix backend cannot keep a key `a` and a key
+  `a/1` at the same time. The state key layouts of the later changes
+  never use a key that is also the prefix of another key followed by
+  `/`. The contract suite follows the same rule.
+- The build sandbox has no extended attributes, so the check
+  `s3-contract` starts versitygw with `--sidecar`.
+- SQLite runs with `synchronous=FULL`, so that a commit survives a
+  power loss.
+- `rmhub serve` uses the standard `flag` package. The change `accounts`
+  moves it into cobra.
