@@ -134,3 +134,42 @@ error when the file can be read by other users.
   limit on `device/new`.
 - [One state read for each tablet request for the device check] → The
   30-second cache removes most reads.
+
+## Implementation Notes
+
+Decisions made during the implementation, for review:
+
+- A create takes over a claim without an account only when the claim is
+  older than one minute (`accounts.OrphanAge`). A younger claim can
+  belong to a create in progress, so the result is status 409. After it
+  writes the account record, a create reads the claim again. If the
+  claim names another account, the create deletes its record and
+  returns status 409. Without these two rules, two parallel creates
+  could both succeed.
+- `GET /api/v1/admin/users` reads the email claims and skips each claim
+  without an account. So a listing reads no key of the root logs.
+- The admin token file can end with a newline. The token after the
+  prefix must be printable ASCII.
+- The API refuses unknown fields in a JSON body with status 400. A
+  request with a wrong method gets status 404 with code `not_found`,
+  because the error codes of the spec have no code for status 405.
+- The user token has `sub` `rM User Token`, as rmfakecloud has. `Name`
+  is the email address when the account has no name. `CreatedAt` and
+  `UpdatedAt` are both the creation time of the account.
+- `device/delete` answers with status 204 also when the device record
+  is already gone, if the device token is valid.
+- The server does not delete a used pairing record. A later use of the
+  code after its expiry deletes it.
+- `--expires` takes an RFC 3339 time or a Go duration from now, for
+  example `720h`.
+- `rmhub admin token issue` and `rmhub tokens create` print only the
+  token on standard output, so that a script can capture it. The note
+  "Store it now" goes to standard error.
+- With `--json`, a client error that has no API error body (for example
+  a connection error) prints `{"error":{"code":"client","message":"…"}}`
+  to standard error.
+- `devices remove` and `tokens revoke` print
+  `{"deviceId":"…","removed":true}` and `{"id":"…","revoked":true}`
+  with `--json`.
+- The package `internal/app` connects the stores and the services to
+  the two HTTP handlers. `rmhub serve` and the tests use it.
