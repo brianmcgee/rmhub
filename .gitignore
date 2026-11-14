@@ -1,0 +1,11 @@
+# direnv
+.direnv/
+.envrc.local
+
+# nix
+result
+result-*
+
+# go
+/vendor/
+/rmhub
