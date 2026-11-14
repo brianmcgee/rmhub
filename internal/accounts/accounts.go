@@ -28,7 +28,12 @@ var (
 	ErrEmailInUse = errors.New("email address is in use")
 	// ErrInvalidEmail means that the email address is empty or has no @.
 	ErrInvalidEmail = errors.New("email address is not valid")
+	// ErrInvalidSchema means that the schema version is not 3 or 4.
+	ErrInvalidSchema = errors.New("schema version must be 3 or 4")
 )
+
+// DefaultSchema is the announced schema of a new account.
+const DefaultSchema = 3
 
 // OrphanAge is the age after which a claim without an account can be
 // taken over. A create that is still in progress finishes well within
@@ -41,6 +46,9 @@ type Account struct {
 	Email     string    `json:"email"`
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"createdAt"`
+	// SchemaVersion is the schema that GET /sync/v4/root announces: 3
+	// or 4.
+	SchemaVersion int `json:"schemaVersion"`
 }
 
 type claim struct {
@@ -75,7 +83,7 @@ func (s *Store) Create(ctx context.Context, email, name string) (Account, error)
 		return Account{}, ErrInvalidEmail
 	}
 	now := s.now().UTC().Truncate(time.Second)
-	acct := Account{ID: ids.NewAccountID(), Email: email, Name: strings.TrimSpace(name), CreatedAt: now}
+	acct := Account{ID: ids.NewAccountID(), Email: email, Name: strings.TrimSpace(name), CreatedAt: now, SchemaVersion: DefaultSchema}
 	ck := claimKey(email)
 	cv, _ := json.Marshal(claim{Account: acct.ID, CreatedAt: now})
 
@@ -143,21 +151,53 @@ func (s *Store) takeClaim(ctx context.Context, key string, value []byte) error {
 
 // Get returns one account.
 func (s *Store) Get(ctx context.Context, id string) (Account, error) {
+	a, _, err := s.get(ctx, id)
+	return a, err
+}
+
+func (s *Store) get(ctx context.Context, id string) (Account, string, error) {
 	if !ids.IsAccountID(id) {
-		return Account{}, ErrNotFound
+		return Account{}, "", ErrNotFound
 	}
-	b, _, err := s.st.Get(ctx, recordKey(id))
+	b, v, err := s.st.Get(ctx, recordKey(id))
 	if errors.Is(err, state.ErrNotFound) {
-		return Account{}, ErrNotFound
+		return Account{}, "", ErrNotFound
 	}
 	if err != nil {
-		return Account{}, err
+		return Account{}, "", err
 	}
 	var a Account
 	if err := json.Unmarshal(b, &a); err != nil {
-		return Account{}, fmt.Errorf("account %s: %w", id, err)
+		return Account{}, "", fmt.Errorf("account %s: %w", id, err)
 	}
-	return a, nil
+	if a.SchemaVersion == 0 {
+		a.SchemaVersion = DefaultSchema
+	}
+	return a, v, nil
+}
+
+// SetSchema changes the announced schema of the account with a
+// put-if-match.
+func (s *Store) SetSchema(ctx context.Context, id string, schema int) (Account, error) {
+	if schema != 3 && schema != 4 {
+		return Account{}, ErrInvalidSchema
+	}
+	for {
+		a, v, err := s.get(ctx, id)
+		if err != nil {
+			return Account{}, err
+		}
+		a.SchemaVersion = schema
+		b, _ := json.Marshal(a)
+		_, err = s.st.PutIfMatch(ctx, recordKey(id), b, v)
+		if errors.Is(err, state.ErrConflict) {
+			continue
+		}
+		if err != nil {
+			return Account{}, err
+		}
+		return a, nil
+	}
 }
 
 // List returns all accounts, ordered by ID. It reads the email claims,

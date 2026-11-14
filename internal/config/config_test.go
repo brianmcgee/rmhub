@@ -115,6 +115,9 @@ func TestErrors(t *testing.T) {
 		{"secret in state config", "[state.s3]\nsecret_access_key = \"x\"\n", "state.s3.secret_access_key"},
 		{"s3 without bucket", "[state]\nbackend = \"s3\"\n", "state.s3.bucket"},
 		{"half tls", "[listen.api]\ntls_cert_file = \"/c\"\n", "listen.api"},
+		{"host with scheme", "[tablet]\nannounced_host = \"https://rmhub.example.org\"\n", "tablet.announced_host"},
+		{"host with path", "[tablet]\nannounced_host = \"rmhub.example.org/x\"\n", "tablet.announced_host"},
+		{"bad check_files", "[tablet]\ncheck_files = \"some\"\n", "tablet.check_files"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := config.Parse(tc.text)
@@ -122,5 +125,21 @@ func TestErrors(t *testing.T) {
 				t.Fatalf("err = %v, want an error that names %s", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestTabletSettings(t *testing.T) {
+	cfg, err := config.Parse("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Tablet.AnnouncedHost != "local.appspot.com" || cfg.Tablet.CheckFiles != "truthful" {
+		t.Fatalf("defaults: %+v", cfg.Tablet)
+	}
+	for _, host := range []string{"rmhub.example.org", "rmhub.example.org:8443", "10.0.0.2:8080"} {
+		cfg, err := config.Parse("[tablet]\nannounced_host = \"" + host + "\"\ncheck_files = \"none\"\n")
+		if err != nil || cfg.Tablet.AnnouncedHost != host || cfg.Tablet.CheckFiles != "none" {
+			t.Fatalf("%s: %+v %v", host, cfg, err)
+		}
 	}
 }

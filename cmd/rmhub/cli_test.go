@@ -168,8 +168,19 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	r = rmhub(ownerEnv, "account", "--json")
-	if r.code != 0 || !strings.Contains(r.stdout, u.ID) {
+	if r.code != 0 || !strings.Contains(r.stdout, u.ID) || !strings.Contains(r.stdout, `"schemaVersion":3`) {
 		t.Fatalf("account: %+v", r)
+	}
+	r = rmhub(ownerEnv, "account", "set-schema", "4", "--json")
+	if r.code != 0 || !strings.Contains(r.stdout, `"schemaVersion":4`) {
+		t.Fatalf("set-schema 4: %+v", r)
+	}
+	if r := rmhub(ownerEnv, "account", "set-schema", "5"); r.code != exitUsage {
+		t.Fatalf("set-schema 5: %+v", r)
+	}
+	r = rmhub(ownerEnv, "account", "set-schema", "3")
+	if r.code != 0 || !strings.Contains(r.stdout, "Schema:  3") {
+		t.Fatalf("set-schema 3: %+v", r)
 	}
 
 	// JSON output: one JSON array.

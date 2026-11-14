@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,17 @@ type Config struct {
 	State   StateConfig  `toml:"state"`
 	Listen  ListenConfig `toml:"listen"`
 	Admin   AdminConfig  `toml:"admin"`
+	Tablet  TabletConfig `toml:"tablet"`
+}
+
+// TabletConfig has the settings of the tablet protocol.
+type TabletConfig struct {
+	// AnnouncedHost is the host that the discovery endpoints return: a
+	// host name with an optional port.
+	AnnouncedHost string `toml:"announced_host"`
+	// CheckFiles is "truthful" or "none". With "none", check-files
+	// always tells that no file is missing.
+	CheckFiles string `toml:"check_files"`
 }
 
 // AdminConfig names the file of the admin token. Without a file, each
@@ -144,6 +156,12 @@ func (c *Config) setDefaults() {
 	if c.Listen.API.Address == "" {
 		c.Listen.API.Address = "127.0.0.1:8081"
 	}
+	if c.Tablet.AnnouncedHost == "" {
+		c.Tablet.AnnouncedHost = "local.appspot.com"
+	}
+	if c.Tablet.CheckFiles == "" {
+		c.Tablet.CheckFiles = "truthful"
+	}
 }
 
 func (c *Config) validate() error {
@@ -177,6 +195,24 @@ func (c *Config) validate() error {
 	}
 	if c.Listen.Tablet.Address == c.Listen.API.Address {
 		return errors.New("listen.tablet.address and listen.api.address must differ")
+	}
+	if err := checkHost(c.Tablet.AnnouncedHost); err != nil {
+		return fmt.Errorf("tablet.announced_host: %w", err)
+	}
+	if c.Tablet.CheckFiles != "truthful" && c.Tablet.CheckFiles != "none" {
+		return fmt.Errorf("tablet.check_files: unknown value %q (use truthful or none)", c.Tablet.CheckFiles)
+	}
+	return nil
+}
+
+// checkHost accepts a host name or address with an optional port.
+func checkHost(h string) error {
+	if strings.ContainsAny(h, "/?#@ ") || strings.Contains(h, "://") {
+		return fmt.Errorf("value %q must be a host name with an optional port, without a scheme or a path", h)
+	}
+	u, err := url.Parse("http://" + h)
+	if err != nil || u.Host != h || u.Hostname() == "" {
+		return fmt.Errorf("value %q must be a host name with an optional port, without a scheme or a path", h)
 	}
 	return nil
 }

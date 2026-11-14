@@ -19,6 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/brianmcgee/rmhub/internal/api"
+	blobfs "github.com/brianmcgee/rmhub/internal/blob/fs"
 	"github.com/brianmcgee/rmhub/internal/config"
 	"github.com/brianmcgee/rmhub/internal/devices"
 	"github.com/brianmcgee/rmhub/internal/server"
@@ -36,6 +37,7 @@ type env struct {
 	admin  string
 	now    time.Time
 	st     state.Store
+	logs   *syncBuffer
 	mu     sync.Mutex
 }
 
@@ -53,10 +55,13 @@ func (e *env) advance(d time.Duration) {
 
 // newEnv starts both handlers on a new SQLite state store. With admin
 // false, no admin token is configured.
-func newEnv(t *testing.T, admin bool) *env {
+func newEnv(t *testing.T, admin bool) *env { return newEnvWith(t, admin, "") }
+
+// newEnvWith is newEnv with more TOML configuration text.
+func newEnvWith(t *testing.T, admin bool, extra string) *env {
 	t.Helper()
 	dir := t.TempDir()
-	cfg, err := config.Parse("data_dir = " + `"` + dir + `"`)
+	cfg, err := config.Parse("data_dir = " + `"` + dir + `"` + "\n" + extra)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,8 +78,15 @@ func newEnv(t *testing.T, admin bool) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a, err := New(context.Background(), cfg, &server.Stores{State: st}, log)
+	blobs, err := blobfs.New(cfg.Blob.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.logs = &syncBuffer{}
+	log := slog.New(slog.NewTextHandler(e.logs, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	a, err := New(ctx, cfg, &server.Stores{State: st, Blob: blobs, TempDir: blobs.TempDir()}, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +108,24 @@ func newEnv(t *testing.T, admin bool) *env {
 	t.Cleanup(e.tablet.Close)
 	t.Cleanup(e.api.Close)
 	return e
+}
+
+// syncBuffer is a log buffer that the server goroutines can share.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 type resp struct {
@@ -194,7 +224,7 @@ func TestAPIBase(t *testing.T) {
 	if r.status != 404 || r.errCode(t) != "not_found" {
 		t.Fatalf("unknown path: %d %s", r.status, r.body)
 	}
-	r = e.apiDo("PATCH", "/api/v1/account", e.admin, nil)
+	r = e.apiDo("PUT", "/api/v1/account", e.admin, nil)
 	if r.status != 404 || r.errCode(t) != "not_found" {
 		t.Fatalf("wrong method: %d %s", r.status, r.body)
 	}
