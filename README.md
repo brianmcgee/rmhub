@@ -28,3 +28,8 @@ With direnv, run `direnv allow` once to load the devshell.
 Changes go through [OpenSpec](https://github.com/Fission-AI/OpenSpec).
 The specs are in `openspec/specs/`. The proposed changes are in
 `openspec/changes/`.
+
+## Licence
+
+rmhub is free software under the GNU Affero General Public License,
+version 3 or later. See `LICENSE`.

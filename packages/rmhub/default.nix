@@ -24,6 +24,7 @@ pkgs.buildGoModule {
 
   meta = {
     description = "Self-hosted alternative to the reMarkable cloud";
+    license = lib.licenses.agpl3Plus;
     mainProgram = "rmhub";
   };
 }
