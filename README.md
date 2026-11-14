@@ -6,8 +6,8 @@ You keep your notes on a server that you control.
 
 ## Status
 
-Early development. The server starts and has storage, but it does not
-sync a tablet yet.
+Early development. The server has accounts, API tokens and tablet
+pairing, but it does not sync documents yet.
 
 ## Run the server
 
@@ -44,6 +44,7 @@ conditional write. A backend that accepts the write stops the server.
 | `listen.api.address` | `127.0.0.1:8081` | Address of the API listener. |
 | `listen.<name>.tls_cert_file` | | TLS certificate. Set it with `tls_key_file`, or set neither for plain HTTP. |
 | `listen.<name>.tls_key_file` | | TLS private key. |
+| `admin.token_file` | | File with the admin token. Without it, each admin request gets status 401. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
@@ -77,6 +78,83 @@ address = "127.0.0.1:8080"
 [listen.api]
 address = "127.0.0.1:8081"
 ```
+
+## First run
+
+1. Generate the admin token and put it in a file that only the server
+   can read:
+
+   ```console
+   $ install -d -m 700 ~/.config/rmhub
+   $ rmhub admin token generate > ~/.config/rmhub/admin-token
+   $ chmod 600 ~/.config/rmhub/admin-token
+   ```
+
+2. Name the file in the configuration and start the server:
+
+   ```toml
+   # ~/.config/rmhub/config.toml
+   [admin]
+   token_file = "/home/ada/.config/rmhub/admin-token"
+   ```
+
+   ```console
+   $ rmhub serve
+   ```
+
+3. Add a user and issue an owner token for the new account:
+
+   ```console
+   $ export RMHUB_URL=http://127.0.0.1:8081
+   $ export RMHUB_TOKEN=$(cat ~/.config/rmhub/admin-token)
+   $ rmhub admin user add --email ada@example.org --name Ada
+   Created account 3x7k2m4q5r6s7t2u3v4w5x6y7z for ada@example.org
+   $ rmhub admin token issue 3x7k2m4q5r6s7t2u3v4w5x6y7z --label laptop
+   rmh_3x7k2m4q5r6s7t2u3v4w5x6y7z_…
+   ```
+
+   The server does not keep the token text. Store it now.
+
+4. Use the owner token to make a pairing code, and type the code on the
+   tablet within 5 minutes:
+
+   ```console
+   $ export RMHUB_TOKEN=rmh_3x7k2m4q5r6s7t2u3v4w5x6y7z_…
+   $ rmhub pair
+   abcdefgh  (expires 2026-11-14T12:05:00Z)
+   ```
+
+   The tablet must use the tablet listener as its cloud host.
+
+## Client
+
+The `rmhub` command is also the client of the rmhub API. It reads the
+server URL from `--url`, `RMHUB_URL` or `url` in
+`$XDG_CONFIG_HOME/rmhub/client.toml`, in that order, and the token from
+`--token`, `RMHUB_TOKEN` or `token` in `client.toml`:
+
+```toml
+# ~/.config/rmhub/client.toml (mode 600)
+url = "http://127.0.0.1:8081"
+token = "rmh_…"
+```
+
+| Command | Purpose |
+|---|---|
+| `rmhub admin user add --email <email> [--name <name>]` | Create an account (admin token). |
+| `rmhub admin user list` | List the accounts (admin token). |
+| `rmhub admin token issue <account> [--label <l>] [--expires <t>]` | Issue an owner token (admin token). |
+| `rmhub admin token generate` | Print a new admin token. Needs no server. |
+| `rmhub account` | Show the account of the token. |
+| `rmhub pair` | Make a pairing code. |
+| `rmhub devices list`, `rmhub devices remove <id>` | List or remove paired devices. |
+| `rmhub tokens list`, `rmhub tokens create`, `rmhub tokens revoke <id>` | Manage the owner tokens. |
+
+Each command prints text by default and one JSON value with `--json`.
+Errors go to standard error. The exit codes are: 0 success, 1 unexpected
+error, 2 usage or setting error, 3 status 401 or 403, 4 status 404, 5
+status 409 or 412. `rmhub <command> --help` shows the options, the JSON
+output form and an example.
 
 ## Development
 
