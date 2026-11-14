@@ -1,0 +1,21 @@
+schema: brianmcgee
+
+context: |
+    We use kernel style commits.
+    Domain: rmhub, a self-hosted alternative to the reMarkable cloud service.
+    Tech stack: Go, nix (blueprint, treefmt-nix).
+    Verify a change: run `go test ./...` and `nix flake check`.
+    Format code with `nix fmt`.
+    Write every artefact in ASD-STE100 Simplified Technical English.
+    Use the asd-ste100 skill.
+
+rules:
+    tasks:
+        - In the last task group, run `go test ./...` and `nix flake check`.
+
+operations:
+    archive:
+        guidance:
+            - Summarize the archive outcome before finishing.
+            - Write the Purpose section of each new main spec. Replace the placeholder text.
+            - If `HERDR_ENV` is `1` and the branch `<change-name>` is merged into main, remove its worktree with `herdr worktree remove --workspace <workspace-id>`. Get the workspace ID from `herdr worktree list`. Do not use `--force`. This command does not delete the branch.
