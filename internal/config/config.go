@@ -21,6 +21,13 @@ type Config struct {
 	Blob    BlobConfig   `toml:"blob"`
 	State   StateConfig  `toml:"state"`
 	Listen  ListenConfig `toml:"listen"`
+	Admin   AdminConfig  `toml:"admin"`
+}
+
+// AdminConfig names the file of the admin token. Without a file, each
+// admin request gets status 401.
+type AdminConfig struct {
+	TokenFile string `toml:"token_file"`
 }
 
 // BlobConfig selects the blob backend.
