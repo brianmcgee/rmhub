@@ -4,6 +4,7 @@ package ids
 import (
 	"crypto/rand"
 	"encoding/base32"
+	"encoding/hex"
 	"strings"
 )
 
@@ -20,6 +21,15 @@ func Random(n int) string {
 		panic("ids: crypto/rand failed: " + err.Error())
 	}
 	return strings.ToLower(b32.EncodeToString(buf))[:n]
+}
+
+// RandomHex returns n random bytes as lowercase hexadecimal text.
+func RandomHex(n int) string {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		panic("ids: crypto/rand failed: " + err.Error())
+	}
+	return hex.EncodeToString(buf)
 }
 
 // NewAccountID returns a new random account ID.
