@@ -6,6 +6,7 @@ let
   testPackages = [
     "./internal/blob/s3"
     "./internal/state/s3"
+    "./internal/rootlog"
   ];
 in
 pkgs.runCommand "s3-contract-check"
