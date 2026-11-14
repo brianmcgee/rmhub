@@ -70,8 +70,8 @@ the entry of any kept generation.
 ### Requirement: Commit record
 Each entry MUST contain the root hash, the generation, the commit time in
 UTC, a write ID and the source of the commit. The source MUST be a device
-ID or an rmhub token ID. The write ID MUST be unique for each commit
-attempt.
+ID with the device description, or an rmhub token ID. The write ID MUST be
+unique for each commit attempt.
 
 #### Scenario: Commit from a tablet
 - **WHEN** a tablet with the device ID D commits a root
@@ -125,13 +125,17 @@ return a failure.
 ### Requirement: Commit events
 After each successful commit, the root log MUST send one event to each
 local listener of the account. The event MUST contain the account, the new
-generation, the root hash and the source. A slow listener MUST NOT delay
-the commit or other listeners.
+generation, the root hash, the source and the broadcast flag of the
+commit. A slow listener MUST NOT delay the commit or other listeners.
 
 #### Scenario: Two listeners
 - **GIVEN** two listeners for the account A
 - **WHEN** a commit for the account A succeeds
 - **THEN** each listener receives one event with the new generation
+
+#### Scenario: Commit without broadcast
+- **WHEN** a commit with the broadcast flag `false` succeeds
+- **THEN** each listener receives one event with the broadcast flag `false`
 
 #### Scenario: Failed commit
 - **WHEN** a commit returns stale-generation
