@@ -151,3 +151,40 @@ covers the tokens of the change `accounts`.
 - [Temporary files for each blob write] → The temporary directory is in
   the data directory, so the blob store on the file system can link the
   file without a copy. For S3 the server streams the file to the bucket.
+
+## Implementation notes
+
+These decisions were made during the implementation without the user.
+Review them.
+
+- The sync package is `internal/tablet/sync15`, not
+  `internal/tablet/sync`. The name `sync` hides the standard library
+  package.
+- The index parser accepts each entry type, not only `0` and
+  `80000000`. rmapi and rmfakecloud do not check the type. Hashes must
+  be lowercase hex.
+- A schema 3 root index also matches the SHA-256 of its bytes. rmapi
+  with `RMAPI_FORCE_SCHEMA_VERSION=3` uses this hash for a schema 3
+  root, and task 6.2 needs it.
+- Blob write rule: the SHA-256 of the body is the key, or the body is
+  below 4 MiB, parses as an index, and its entry list hash (or root
+  hash) is the key.
+- A blob read above 8 MiB goes to a temporary file first, because the
+  `x-goog-hash` header must come before the body. Smaller blobs stay
+  in memory.
+- In `check-files`, an invalid hash counts as missing. An empty result
+  is `[]`, not `null`.
+- The websocket of a removed device closes at the next ping tick. At
+  each tick the writer checks the device record through the 30 second
+  device cache, so the close comes within 60 seconds. This works across
+  processes, so there is no direct hook from the device removal.
+- The pong deadline is 90 seconds after the last pong.
+- `POST /sync/v2/sync-complete` sends its notification through the hub
+  directly, not through the root log, because it does not change the
+  root.
+- The analytics, report and beta endpoints need no token. Only
+  `/sync/reports/v1` needs a user token.
+- The account view of the API and the CLI shows `schemaVersion`.
+  `PATCH /api/v1/account` takes only `schemaVersion`.
+- The README example for rmfakecloud-proxy uses the `upstream` key from
+  the proxy README. The installer of the proxy was not tested here.
