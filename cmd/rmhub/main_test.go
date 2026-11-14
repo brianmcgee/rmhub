@@ -16,7 +16,7 @@ import (
 // TestMain runs the command when the test binary runs as a child.
 func TestMain(m *testing.M) {
 	if os.Getenv("RMHUB_TEST_RUN_MAIN") == "1" {
-		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Getenv))
 	}
 	os.Exit(m.Run())
 }
