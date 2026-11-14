@@ -6,8 +6,9 @@ You keep your notes on a server that you control.
 
 ## Status
 
-Early development. The server has accounts, API tokens and tablet
-pairing, but it does not sync documents yet.
+Early development. The server has accounts, API tokens, tablet pairing
+and Sync 1.5 for tablets, with change notifications. It does not render
+documents yet.
 
 ## Run the server
 
@@ -45,6 +46,8 @@ conditional write. A backend that accepts the write stops the server.
 | `listen.<name>.tls_cert_file` | | TLS certificate. Set it with `tls_key_file`, or set neither for plain HTTP. |
 | `listen.<name>.tls_key_file` | | TLS private key. |
 | `admin.token_file` | | File with the admin token. Without it, each admin request gets status 401. |
+| `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
+| `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
@@ -124,7 +127,54 @@ address = "127.0.0.1:8081"
    abcdefgh  (expires 2026-11-14T12:05:00Z)
    ```
 
-   The tablet must use the tablet listener as its cloud host.
+   The tablet must use the tablet listener as its cloud host. See
+   [Connect a tablet](#connect-a-tablet).
+
+## Connect a tablet
+
+The tablet talks to the reMarkable cloud over HTTPS. To send it to rmhub,
+install [rmfakecloud-proxy](https://github.com/ddvk/rmfakecloud-proxy) on
+the tablet. The installer of the proxy adds a CA certificate and host
+entries, so that the cloud host names go to the proxy on the tablet. Set
+the upstream URL of the proxy (the installer asks for it, or the
+`upstream` key of its configuration file) to the tablet listener of
+rmhub, for example:
+
+```yaml
+# configuration file of rmfakecloud-proxy on the tablet
+upstream: https://rmhub.example.org:8443
+```
+
+Put the tablet listener behind TLS (`listen.tablet.tls_cert_file`) or a
+TLS reverse proxy when the network between the tablet and the server is
+not trusted.
+
+The discovery endpoints tell the tablet which host to use for sync and
+notifications. `tablet.announced_host` sets that host. The default is
+`local.appspot.com`. The host must resolve to the proxy on the tablet;
+check the host entries that the proxy installer adds, and set this key
+if your installer uses a different name. The value is a host name with
+an optional port, with no scheme and no path.
+
+```toml
+[tablet]
+announced_host = "local.appspot.com"
+check_files = "truthful"
+```
+
+`tablet.check_files` controls the answer to `POST /sync/v3/check-files`:
+`truthful` names the blobs that the server does not have, `none` gives
+`{"missingFiles":null}` like the reMarkable cloud. Use `none` only if a
+tablet behaves badly with the truthful answer.
+
+The server announces a schema version for root indexes to the tablet.
+The default is 3. Set it for each account:
+
+```console
+$ rmhub account set-schema 4
+```
+
+The server accepts root indexes of schema 3 and 4 for each setting.
 
 ## Client
 
@@ -149,6 +199,7 @@ token = "rmh_…"
 | `rmhub pair` | Make a pairing code. |
 | `rmhub devices list`, `rmhub devices remove <id>` | List or remove paired devices. |
 | `rmhub tokens list`, `rmhub tokens create`, `rmhub tokens revoke <id>` | Manage the owner tokens. |
+| `rmhub account set-schema <3\|4>` | Set the root index schema that the server announces to the tablets. |
 
 Each command prints text by default and one JSON value with `--json`.
 Errors go to standard error. The exit codes are: 0 success, 1 unexpected

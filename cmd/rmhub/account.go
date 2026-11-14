@@ -12,9 +12,10 @@ import (
 )
 
 type userView struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	SchemaVersion int    `json:"schemaVersion"`
 }
 
 type tokenView struct {
@@ -175,12 +176,17 @@ func (c *cli) printIssued(t issuedView) error {
 }
 
 func (c *cli) accountCmd() *cobra.Command {
-	return &cobra.Command{
+	show := func(u userView) error {
+		return c.output(u, func(w io.Writer) {
+			_, _ = fmt.Fprintf(w, "ID:\t%s\nEmail:\t%s\nName:\t%s\nSchema:\t%d\n", u.ID, u.Email, u.Name, u.SchemaVersion)
+		})
+	}
+	account := &cobra.Command{
 		Use:   "account",
 		Short: "Show the account of the token",
 		Long: `Show the account that the owner token belongs to.
 
-JSON output: {"id":"…","email":"…","name":"…"}`,
+JSON output: {"id":"…","email":"…","name":"…","schemaVersion":3}`,
 		Example: "  rmhub account",
 		Args:    noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -192,11 +198,42 @@ JSON output: {"id":"…","email":"…","name":"…"}`,
 			if _, err := cl.do(cmd.Context(), "GET", "/api/v1/account", nil, &u); err != nil {
 				return err
 			}
-			return c.output(u, func(w io.Writer) {
-				_, _ = fmt.Fprintf(w, "ID:\t%s\nEmail:\t%s\nName:\t%s\n", u.ID, u.Email, u.Name)
-			})
+			return show(u)
 		},
 	}
+	setSchema := &cobra.Command{
+		Use:   "set-schema <3|4>",
+		Short: "Set the sync schema that the server announces",
+		Long: `Set the schema version that the server announces to the tablets of the
+account in GET /sync/v4/root. The value is 3 (the default) or 4. The
+server accepts roots of both schemas for each value.
+
+JSON output: {"id":"…","email":"…","name":"…","schemaVersion":4}`,
+		Example: "  rmhub account set-schema 4",
+		Args:    exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var schema int
+			switch args[0] {
+			case "3":
+				schema = 3
+			case "4":
+				schema = 4
+			default:
+				return usageErr("the schema version must be 3 or 4")
+			}
+			cl, err := c.client()
+			if err != nil {
+				return err
+			}
+			var u userView
+			if _, err := cl.do(cmd.Context(), "PATCH", "/api/v1/account", map[string]int{"schemaVersion": schema}, &u); err != nil {
+				return err
+			}
+			return show(u)
+		},
+	}
+	account.AddCommand(setSchema)
+	return account
 }
 
 func (c *cli) pairCmd() *cobra.Command {

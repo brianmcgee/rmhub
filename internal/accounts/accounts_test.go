@@ -50,9 +50,27 @@ func TestCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	for k := range fields {
-		if k != "id" && k != "email" && k != "name" && k != "createdAt" {
+		if k != "id" && k != "email" && k != "name" && k != "createdAt" && k != "schemaVersion" {
 			t.Fatalf("unexpected field %q in %s", k, raw)
 		}
+	}
+	if a.SchemaVersion != DefaultSchema {
+		t.Fatalf("schema of a new account: %d", a.SchemaVersion)
+	}
+	for _, v := range []int{4, 3} {
+		got, err := s.SetSchema(ctx, a.ID, v)
+		if err != nil || got.SchemaVersion != v {
+			t.Fatalf("set schema %d: %+v %v", v, got, err)
+		}
+		if got, _ := s.Get(ctx, a.ID); got.SchemaVersion != v || got.Email != a.Email {
+			t.Fatalf("get after set schema %d: %+v", v, got)
+		}
+	}
+	if _, err := s.SetSchema(ctx, a.ID, 5); !errors.Is(err, ErrInvalidSchema) {
+		t.Fatalf("schema 5: %v", err)
+	}
+	if _, err := s.SetSchema(ctx, "aaaaaaaaaaaaaaaaaaaaaaaaaa", 4); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("schema of unknown account: %v", err)
 	}
 
 	if _, err := s.Create(ctx, "ADA@example.org", ""); !errors.Is(err, ErrEmailInUse) {

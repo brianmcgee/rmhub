@@ -13,24 +13,32 @@ import (
 	"github.com/brianmcgee/rmhub/internal/config"
 	"github.com/brianmcgee/rmhub/internal/devices"
 	"github.com/brianmcgee/rmhub/internal/pairing"
+	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/server"
 	"github.com/brianmcgee/rmhub/internal/tablet"
+	"github.com/brianmcgee/rmhub/internal/tablet/notify"
+	"github.com/brianmcgee/rmhub/internal/tablet/sync15"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
 
 // App holds the services of one server process.
 type App struct {
-	Accounts *accounts.Store
-	Tokens   *tokens.Store
-	Devices  *devices.Registry
-	Pairing  *pairing.Store
-	Issuer   *tablet.Issuer
-	Tablet   *tablet.Service
-	API      *api.Service
+	Accounts  *accounts.Store
+	Tokens    *tokens.Store
+	Devices   *devices.Registry
+	Pairing   *pairing.Store
+	Roots     *rootlog.Log
+	Issuer    *tablet.Issuer
+	Tablet    *tablet.Service
+	Discovery *tablet.Discovery
+	Sync      *sync15.Service
+	Hub       *notify.Hub
+	API       *api.Service
+	log       *slog.Logger
 }
 
 // New makes the services on the stores. It reads the admin token file
-// and the JWT signing key.
+// and the JWT signing key. The notification hub runs until ctx ends.
 func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *slog.Logger) (*App, error) {
 	var admin *tokens.Admin
 	if cfg.Admin.TokenFile != "" {
@@ -50,10 +58,24 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		Tokens:   tokens.New(st),
 		Devices:  devices.New(st),
 		Pairing:  pairing.New(st),
+		Roots:    rootlog.New(st, rootlog.WithLogger(log)),
 		Issuer:   tablet.NewIssuer(key),
+		log:      log,
 	}
 	a.Tablet = &tablet.Service{Accounts: a.Accounts, Devices: a.Devices, Pairing: a.Pairing, Issuer: a.Issuer, Log: log}
+	a.Discovery = &tablet.Discovery{Host: cfg.Tablet.AnnouncedHost}
+	a.Hub = notify.New(log, a.Devices.Check)
+	a.Sync = &sync15.Service{
+		Blobs:      stores.Blob,
+		Roots:      a.Roots,
+		Accounts:   a.Accounts,
+		Notifier:   a.Hub,
+		Log:        log,
+		TempDir:    stores.TempDir,
+		CheckFiles: cfg.Tablet.CheckFiles != "none",
+	}
 	a.API = &api.Service{Accounts: a.Accounts, Tokens: a.Tokens, Devices: a.Devices, Pairing: a.Pairing, Admin: admin, Log: log}
+	go a.Hub.Run(ctx, a.Roots)
 	return a, nil
 }
 
@@ -62,6 +84,10 @@ func (a *App) TabletHandler() http.Handler {
 	mux := http.NewServeMux()
 	server.HandleHealth(mux)
 	a.Tablet.Register(mux)
+	a.Discovery.Register(mux, a.Tablet.RequireUser)
+	a.Sync.Register(mux, a.Tablet.RequireUser)
+	mux.Handle("GET /notifications/ws/json/1", a.Tablet.RequireUser(a.Hub))
+	mux.Handle("/", tablet.NotFound(a.log))
 	return mux
 }
 

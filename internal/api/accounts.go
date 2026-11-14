@@ -77,6 +77,7 @@ func (s *Service) Register(m *Mux) {
 	m.Handle("POST /api/v1/admin/users/{id}/tokens", admin(s.issueToken))
 
 	m.Handle("GET /api/v1/account", auth(Owner(s.getAccount)))
+	m.Handle("PATCH /api/v1/account", auth(Owner(s.patchAccount)))
 	m.Handle("GET /api/v1/account/tokens", auth(Owner(s.listTokens)))
 	m.Handle("POST /api/v1/account/tokens", auth(Owner(s.createToken)))
 	m.Handle("DELETE /api/v1/account/tokens/{id}", auth(Owner(s.revokeToken)))
@@ -98,12 +99,15 @@ func Owner(h HandlerFunc) HandlerFunc {
 }
 
 type userView struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	SchemaVersion int    `json:"schemaVersion"`
 }
 
-func viewOf(a accounts.Account) userView { return userView{ID: a.ID, Email: a.Email, Name: a.Name} }
+func viewOf(a accounts.Account) userView {
+	return userView{ID: a.ID, Email: a.Email, Name: a.Name, SchemaVersion: a.SchemaVersion}
+}
 
 type createUserRequest struct {
 	Email string `json:"email"`
@@ -201,6 +205,34 @@ func (s *Service) getAccount(w http.ResponseWriter, r *http.Request) error {
 	a, err := s.account(r.Context(), PrincipalFrom(r.Context()).Account)
 	if err != nil {
 		return err
+	}
+	WriteJSON(w, http.StatusOK, viewOf(a))
+	return nil
+}
+
+type patchAccountRequest struct {
+	SchemaVersion *int `json:"schemaVersion"`
+}
+
+func (s *Service) patchAccount(w http.ResponseWriter, r *http.Request) error {
+	var req patchAccountRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		return err
+	}
+	acct := PrincipalFrom(r.Context()).Account
+	a, err := s.account(r.Context(), acct)
+	if err != nil {
+		return err
+	}
+	if req.SchemaVersion != nil {
+		a, err = s.Accounts.SetSchema(r.Context(), acct, *req.SchemaVersion)
+		if errors.Is(err, accounts.ErrInvalidSchema) {
+			return Errorf(CodeBadRequest, "the field schemaVersion must be 3 or 4")
+		}
+		if err != nil {
+			return err
+		}
+		s.Log.Info("announced schema changed", "account", acct, "schema", a.SchemaVersion)
 	}
 	WriteJSON(w, http.StatusOK, viewOf(a))
 	return nil
