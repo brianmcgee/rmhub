@@ -116,3 +116,21 @@ the rmhub API resumes by generation.
 - [A writer that is ahead of the server] → The test for `roots/<g>`
   returns stale-generation. The tablet then reads the root again, which
   gives it the correct generation.
+
+## Implementation Notes
+
+Decisions made during the implementation, for review:
+
+- A listener can subscribe to the account `""` to get the events of all
+  accounts. The notification hub of `tablet-sync` uses one such listener.
+- `Listener.Lost()` returns the lost-events flag and clears it. A
+  listener that sees `true` reads the current root once.
+- When the retry of an unknown outcome gets a conflict, the commit reads
+  the entry again and compares the write ID. The first write can arrive
+  after the first read, so the conflict can come from the same commit.
+- The head hint update stops after 10 conflicts in sequence and logs a
+  warning. Readers walk forward, so this has no effect on correctness.
+- The write ID is 16 random bytes in hexadecimal. The commit time is in
+  UTC with a resolution of one second.
+- The read of the current root of an account with no commit gives the
+  generation 0 and an empty hash, not an error.
