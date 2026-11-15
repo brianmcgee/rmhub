@@ -71,18 +71,25 @@ func (i *Issuer) sign(c jwt.MapClaims) (string, error) {
 	return t.SignedString(i.key)
 }
 
-// DeviceToken returns a device token. It has no expiry time.
-func (i *Issuer) DeviceToken(account, desc, deviceID string) (string, error) {
+// pairingClaim is the claim with the pairing ID of the device. The
+// tablet does not read it.
+const pairingClaim = "rmhub-pairing"
+
+// DeviceToken returns a device token for one pairing of the device. It
+// has no expiry time.
+func (i *Issuer) DeviceToken(account, desc, deviceID, pairing string) (string, error) {
 	return i.sign(jwt.MapClaims{
 		"auth0-userid": "auth0|" + account,
 		"device-desc":  desc,
 		"device-id":    deviceID,
+		pairingClaim:   pairing,
 		"aud":          "api",
 	})
 }
 
-// UserToken returns a user token for the device of the account.
-func (i *Issuer) UserToken(a accounts.Account, desc, deviceID string) (string, error) {
+// UserToken returns a user token for one pairing of the device of the
+// account.
+func (i *Issuer) UserToken(a accounts.Account, desc, deviceID, pairing string) (string, error) {
 	now := i.now().UTC().Truncate(time.Second)
 	name := a.Name
 	if name == "" {
@@ -100,6 +107,7 @@ func (i *Issuer) UserToken(a accounts.Account, desc, deviceID string) (string, e
 		},
 		"device-desc": desc,
 		"device-id":   deviceID,
+		pairingClaim:  pairing,
 		"scopes":      Scopes,
 		"level":       "connect",
 		"tectonic":    "eu",
@@ -113,18 +121,22 @@ func (i *Issuer) UserToken(a accounts.Account, desc, deviceID string) (string, e
 	})
 }
 
-// Device is the content of a valid device token.
+// Device is the content of a valid device token. Pairing is empty in a
+// token from an earlier version of rmhub.
 type Device struct {
 	Account  string
 	DeviceID string
 	Desc     string
+	Pairing  string
 }
 
-// User is the content of a valid user token.
+// User is the content of a valid user token. Pairing is empty in a token
+// from an earlier version of rmhub.
 type User struct {
 	Account  string
 	DeviceID string
 	Desc     string
+	Pairing  string
 }
 
 var errToken = errors.New("tablet token is not valid")
@@ -154,10 +166,11 @@ func (i *Issuer) ParseDevice(text string) (Device, error) {
 	acct, ok := accountOf(c["auth0-userid"])
 	id, _ := c["device-id"].(string)
 	desc, _ := c["device-desc"].(string)
+	pairing, _ := c[pairingClaim].(string)
 	if !ok || id == "" {
 		return Device{}, errToken
 	}
-	return Device{Account: acct, DeviceID: id, Desc: desc}, nil
+	return Device{Account: acct, DeviceID: id, Desc: desc, Pairing: pairing}, nil
 }
 
 // ParseUser checks a user token: signature, expiry, version 10 and a
@@ -174,8 +187,9 @@ func (i *Issuer) ParseUser(text string) (User, error) {
 	acct, ok := accountOf(profile["UserID"])
 	id, _ := c["device-id"].(string)
 	desc, _ := c["device-desc"].(string)
+	pairing, _ := c[pairingClaim].(string)
 	if !ok || id == "" {
 		return User{}, errToken
 	}
-	return User{Account: acct, DeviceID: id, Desc: desc}, nil
+	return User{Account: acct, DeviceID: id, Desc: desc, Pairing: pairing}, nil
 }

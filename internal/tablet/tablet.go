@@ -117,11 +117,12 @@ func (s *Service) deviceNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := devices.Device{DeviceID: req.DeviceID, Desc: req.DeviceDesc, PairedAt: s.now().UTC().Truncate(time.Second)}
-	if err := s.Devices.Register(r.Context(), acct, d); err != nil {
+	pairingID, err := s.Devices.Register(r.Context(), acct, d)
+	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	tok, err := s.Issuer.DeviceToken(acct, req.DeviceDesc, req.DeviceID)
+	tok, err := s.Issuer.DeviceToken(acct, req.DeviceDesc, req.DeviceID, pairingID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -138,7 +139,7 @@ func (s *Service) device(w http.ResponseWriter, r *http.Request) (Device, bool) 
 		unauthorized(w)
 		return Device{}, false
 	}
-	ok, err := s.Devices.Exists(r.Context(), d.Account, d.DeviceID)
+	ok, err := s.Devices.Exists(r.Context(), d.Account, d.DeviceID, d.Pairing)
 	if err != nil {
 		s.fail(w, r, err)
 		return Device{}, false
@@ -164,7 +165,7 @@ func (s *Service) userNew(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	tok, err := s.Issuer.UserToken(a, d.Desc, d.DeviceID)
+	tok, err := s.Issuer.UserToken(a, d.Desc, d.DeviceID, d.Pairing)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -204,7 +205,7 @@ func (s *Service) RequireUser(next http.Handler) http.Handler {
 			unauthorized(w)
 			return
 		}
-		ok, err := s.Devices.Check(r.Context(), u.Account, u.DeviceID)
+		ok, err := s.Devices.Check(r.Context(), u.Account, u.DeviceID, u.Pairing)
 		if err != nil {
 			s.fail(w, r, err)
 			return

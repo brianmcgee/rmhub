@@ -4,6 +4,7 @@ package devices
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brianmcgee/rmhub/internal/ids"
 	"github.com/brianmcgee/rmhub/internal/state"
 )
 
@@ -48,8 +50,17 @@ type Device struct {
 	PairedAt time.Time `json:"pairedAt"`
 }
 
+// record is the stored form of a device.
+type record struct {
+	Device
+	// Pairing identifies one pairing of the device. A record from an
+	// earlier version of rmhub has no pairing ID.
+	Pairing string `json:"pairing,omitempty"`
+}
+
 type cacheEntry struct {
 	exists  bool
+	pairing string
 	expires time.Time
 }
 
@@ -79,14 +90,16 @@ func Key(account, deviceID string) string {
 }
 
 // Register adds the device, or replaces the record of a device with the
-// same ID.
-func (r *Registry) Register(ctx context.Context, account string, d Device) error {
+// same ID. It returns the ID of the new pairing. The tokens of an
+// earlier pairing of the device do not pass Exists and Check.
+func (r *Registry) Register(ctx context.Context, account string, d Device) (string, error) {
 	if !ValidID(d.DeviceID) {
-		return fmt.Errorf("invalid device ID %q", d.DeviceID)
+		return "", fmt.Errorf("invalid device ID %q", d.DeviceID)
 	}
-	b, err := json.Marshal(d)
+	pairing := ids.Random(16)
+	b, err := json.Marshal(record{Device: d, Pairing: pairing})
 	if err != nil {
-		return err
+		return "", err
 	}
 	key := Key(account, d.DeviceID)
 	for range 5 {
@@ -100,12 +113,13 @@ func (r *Registry) Register(ctx context.Context, account string, d Device) error
 		if errors.Is(err, state.ErrConflict) {
 			continue
 		}
-		if err == nil {
-			r.forget(account, d.DeviceID)
+		if err != nil {
+			return "", err
 		}
-		return err
+		r.forget(account, d.DeviceID)
+		return pairing, nil
 	}
-	return errors.New("device record changed five times during the write")
+	return "", errors.New("device record changed five times during the write")
 }
 
 // List returns the devices of the account, ordered by device ID.
@@ -123,11 +137,11 @@ func (r *Registry) List(ctx context.Context, account string) ([]Device, error) {
 		if err != nil {
 			return nil, err
 		}
-		var d Device
-		if err := json.Unmarshal(b, &d); err != nil {
+		var rec record
+		if err := json.Unmarshal(b, &rec); err != nil {
 			return nil, fmt.Errorf("device record %s: %w", k, err)
 		}
-		out = append(out, d)
+		out = append(out, rec.Device)
 	}
 	slices.SortFunc(out, func(a, b Device) int { return strings.Compare(a.DeviceID, b.DeviceID) })
 	return out, nil
@@ -152,33 +166,53 @@ func (r *Registry) Remove(ctx context.Context, account, deviceID string) error {
 	return nil
 }
 
-// Exists reads the registry without the cache.
-func (r *Registry) Exists(ctx context.Context, account, deviceID string) (bool, error) {
+// lookup reads the record of the device without the cache.
+func (r *Registry) lookup(ctx context.Context, account, deviceID string) (cacheEntry, error) {
 	if !ValidID(deviceID) {
-		return false, nil
+		return cacheEntry{}, nil
 	}
-	_, _, err := r.st.Get(ctx, Key(account, deviceID))
+	b, _, err := r.st.Get(ctx, Key(account, deviceID))
 	if errors.Is(err, state.ErrNotFound) {
-		return false, nil
+		return cacheEntry{}, nil
 	}
-	return err == nil, err
+	if err != nil {
+		return cacheEntry{}, err
+	}
+	var rec record
+	if err := json.Unmarshal(b, &rec); err != nil {
+		return cacheEntry{}, fmt.Errorf("device record of %s: %w", deviceID, err)
+	}
+	return cacheEntry{exists: true, pairing: rec.Pairing}, nil
 }
 
-// Check tells if the device is in the registry. It keeps each result for
-// CacheTTL.
-func (r *Registry) Check(ctx context.Context, account, deviceID string) (bool, error) {
+// match tells if the entry is a paired device with the pairing ID.
+func (e cacheEntry) match(pairing string) bool {
+	return e.exists && subtle.ConstantTimeCompare([]byte(e.pairing), []byte(pairing)) == 1
+}
+
+// Exists tells if the device is in the registry with the pairing ID. It
+// reads the registry without the cache.
+func (r *Registry) Exists(ctx context.Context, account, deviceID, pairing string) (bool, error) {
+	e, err := r.lookup(ctx, account, deviceID)
+	return e.match(pairing), err
+}
+
+// Check tells if the device is in the registry with the pairing ID. It
+// keeps each record for CacheTTL.
+func (r *Registry) Check(ctx context.Context, account, deviceID, pairing string) (bool, error) {
 	ck := account + "/" + deviceID
 	now := r.now()
 	r.mu.Lock()
 	e, ok := r.cache[ck]
 	r.mu.Unlock()
 	if ok && now.Before(e.expires) {
-		return e.exists, nil
+		return e.match(pairing), nil
 	}
-	exists, err := r.Exists(ctx, account, deviceID)
+	e, err := r.lookup(ctx, account, deviceID)
 	if err != nil {
 		return false, err
 	}
+	e.expires = now.Add(CacheTTL)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Remove expired entries so that the map does not grow without limit.
@@ -187,8 +221,8 @@ func (r *Registry) Check(ctx context.Context, account, deviceID string) (bool, e
 			delete(r.cache, k)
 		}
 	}
-	r.cache[ck] = cacheEntry{exists: exists, expires: now.Add(CacheTTL)}
-	return exists, nil
+	r.cache[ck] = e
+	return e.match(pairing), nil
 }
 
 func (r *Registry) forget(account, deviceID string) {

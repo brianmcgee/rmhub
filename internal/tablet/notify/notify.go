@@ -21,8 +21,9 @@ import (
 // closes a websocket.
 const SendBuffer = 64
 
-// DeviceCheck tells if the device is still paired with the account.
-type DeviceCheck func(ctx context.Context, account, deviceID string) (bool, error)
+// DeviceCheck tells if the device is still paired with the account, with
+// the pairing ID of its token.
+type DeviceCheck func(ctx context.Context, account, deviceID, pairing string) (bool, error)
 
 // Hub keeps the open websockets and sends the notifications.
 type Hub struct {
@@ -60,6 +61,7 @@ type conn struct {
 	ws       *websocket.Conn
 	account  string
 	deviceID string
+	pairing  string
 	send     chan []byte
 	once     sync.Once
 	done     chan struct{}
@@ -172,7 +174,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader wrote the error response.
 		return
 	}
-	c := &conn{ws: ws, account: u.Account, deviceID: u.DeviceID, send: make(chan []byte, SendBuffer), done: make(chan struct{})}
+	c := &conn{ws: ws, account: u.Account, deviceID: u.DeviceID, pairing: u.Pairing, send: make(chan []byte, SendBuffer), done: make(chan struct{})}
 	if !h.add(c) {
 		c.close()
 		return
@@ -238,7 +240,7 @@ func (h *Hub) write(c *conn) {
 				return
 			}
 		case <-ticker.C:
-			ok, err := h.check(context.Background(), c.account, c.deviceID)
+			ok, err := h.check(context.Background(), c.account, c.deviceID, c.pairing)
 			if err == nil && !ok {
 				h.log.Info("device removed; closing its notification websocket", "account", c.account, "device", c.deviceID)
 				_ = c.ws.WriteControl(websocket.CloseMessage,

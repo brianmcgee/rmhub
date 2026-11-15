@@ -599,7 +599,7 @@ func TestTabletAuth(t *testing.T) {
 	// A token without version 10.
 	a, _ := e.app.Accounts.Get(context.Background(), acct)
 	other := tablet.NewIssuer([]byte(strings.Repeat("k", 32)))
-	foreign, _ := other.UserToken(a, "remarkable", "dev-1")
+	foreign, _ := other.UserToken(a, "remarkable", "dev-1", "")
 	unauth("token with another key", foreign)
 	noVersion := signWithout(t, e, user, "version")
 	unauth("token without version", noVersion)
@@ -666,6 +666,59 @@ func TestDeviceRemoval(t *testing.T) {
 	}
 	if r := e.do("GET", e.tablet.URL+"/sync/test", user2, nil); r.status != 401 {
 		t.Fatalf("after API removal: %d", r.status)
+	}
+}
+
+// A device that pairs again gets new tokens. The tokens of the earlier
+// pairing stay invalid, so a removed device cannot come back with them.
+func TestTokensOfAnEarlierPairing(t *testing.T) {
+	e := newEnv(t, true)
+	_, owner := e.user("ada@example.org")
+	device := e.paired(owner, "dev-1")
+	user := string(e.userToken(device).body)
+	if r := e.apiDo("DELETE", "/api/v1/account/devices/dev-1", owner, nil); r.status != 204 {
+		t.Fatalf("remove: %d %s", r.status, r.body)
+	}
+	device2 := e.paired(owner, "dev-1")
+	if r := e.userToken(device); r.status != 401 {
+		t.Fatalf("device token of the earlier pairing: %d", r.status)
+	}
+	if r := e.do("GET", e.tablet.URL+"/sync/test", user, nil); r.status != 401 {
+		t.Fatalf("user token of the earlier pairing: %d", r.status)
+	}
+	r := e.userToken(device2)
+	if r.status != 200 {
+		t.Fatalf("device token of the new pairing: %d", r.status)
+	}
+	if r := e.do("GET", e.tablet.URL+"/sync/test", string(r.body), nil); r.status != 200 {
+		t.Fatalf("user token of the new pairing: %d", r.status)
+	}
+}
+
+// A device that paired with an earlier version of rmhub has a record and
+// a token without a pairing ID. It continues to sync.
+func TestTokenWithoutPairingID(t *testing.T) {
+	e := newEnv(t, true)
+	acct, _ := e.user("ada@example.org")
+	ctx := context.Background()
+	rec := `{"deviceId":"dev-1","desc":"remarkable","pairedAt":"2026-01-02T03:04:05Z"}`
+	if _, err := e.st.PutIfAbsent(ctx, devices.Key(acct, "dev-1"), []byte(rec)); err != nil {
+		t.Fatal(err)
+	}
+	device, err := e.app.Tablet.Issuer.DeviceToken(acct, "remarkable", "dev-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := e.userToken(device)
+	if r.status != 200 {
+		t.Fatalf("user token: %d", r.status)
+	}
+	if r := e.do("GET", e.tablet.URL+"/sync/test", string(r.body), nil); r.status != 200 {
+		t.Fatalf("sync: %d", r.status)
+	}
+	withID, _ := e.app.Tablet.Issuer.DeviceToken(acct, "remarkable", "dev-1", "abcdefghijklmnop")
+	if r := e.userToken(withID); r.status != 401 {
+		t.Fatalf("token with a pairing ID that the record does not have: %d", r.status)
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 // send buffer is closed after SendBuffer messages, and that Notify does
 // not block.
 func TestFullBuffer(t *testing.T) {
-	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), func(context.Context, string, string) (bool, error) { return true, nil })
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), func(context.Context, string, string, string) (bool, error) { return true, nil })
 	conns := make(chan *conn, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := h.upgrader.Upgrade(w, r, nil)
