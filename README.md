@@ -58,7 +58,7 @@ conditional write. A backend that accepts the write stops the server.
 | `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
 | `render.cache_dir` | `$XDG_CACHE_HOME/rmhub/render` | Directory of the page render cache. Without `XDG_CACHE_HOME`, `~/.cache` is used. |
 | `render.cache_max_bytes` | `1073741824` | Maximum size of the render cache, in bytes. The oldest files are deleted first. |
-| `render.max_workers` | CPU threads, at most `4` | Maximum number of page renders at the same time. More requests wait. Each worker can use up to 1 GiB of memory for a PDF page, so this value multiplied by 1 GiB is the memory limit of the PDF renders. |
+| `render.max_workers` | CPU threads, at most `4` | Maximum number of page renders at the same time. More requests wait. Each worker can use up to 1 GiB of memory for a PDF page, so this value multiplied by 1 GiB is the memory limit of the PDF renders. A PDF that PDFium cannot draw in 60 seconds gets status 409. A page whose strokes need too much drawing work gets status 400. |
 | `limits.pairing_per_minute` | `10` | Maximum number of pairing attempts of one client address in one minute. `-1` means no limit. |
 | `limits.api_per_minute` | `600` | Maximum number of API requests of one token in one minute. `-1` means no limit. |
 | `limits.render_per_minute` | `60` | Maximum number of page renders of one account in one minute. A page from the render cache does not count. `-1` means no limit. |

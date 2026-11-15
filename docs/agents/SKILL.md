@@ -138,9 +138,11 @@ page without strokes.
 `render` draws the strokes of a page, and on a PDF page also the PDF.
 Look at the image to read handwriting. The default format is PNG and the
 default width is 1404 pixels (from 100 to 4096). A PDF page is
-available only as PNG; SVG gives exit code 1. A very long page can be
-too large for a large width; this also gives exit code 1, so use a
-smaller width. An EPUB page or a page
+available only as PNG. SVG gives exit code 1. A very long page, or a
+page with very long strokes, can be too large for a large width. This
+also gives exit code 1, so use a smaller width. A PDF that the server
+cannot draw in 60 seconds gives exit code 5. Do not try that page
+again. An EPUB page or a page
 number out of range gives exit code 4. Without `-o`, the file is
 `<name>-p<number>.<format>`. The command never replaces a file.
 
