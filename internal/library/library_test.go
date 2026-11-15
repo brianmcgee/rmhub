@@ -114,6 +114,33 @@ func TestEntryModel(t *testing.T) {
 	}
 }
 
+// TestParentRootAlias uses the metadata of folders that rmfakecloud made:
+// the tablet shows an entry with the parent "root" at the top level.
+func TestParentRootAlias(t *testing.T) {
+	e := libtest.New(t)
+	e.Folder("projects", "1 Projects", "root")
+	e.PDF("paper", "Paper", "projects", []byte("%PDF-1.7"))
+	e.Folder("notes", "Meeting Notes", "")
+	e.Commit(3)
+
+	s, err := library.New(e.Roots, e.Blobs).Current(e.Ctx, e.Account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(s.Children("")); got != "projects,notes" {
+		t.Fatalf("top level %s", got)
+	}
+	if got := ids(s.Children("projects")); got != "paper" {
+		t.Fatalf("children of projects %s", got)
+	}
+	if got := s.Path("paper", nil); got != "/1 Projects/Paper" {
+		t.Fatalf("path %q", got)
+	}
+	if p, _ := s.Doc("projects"); p.Parent != "" {
+		t.Fatalf("parent %q", p.Parent)
+	}
+}
+
 func TestSearch(t *testing.T) {
 	e := libtest.New(t)
 	e.PDF("a", "Tax 2025", "", []byte("%PDF"))

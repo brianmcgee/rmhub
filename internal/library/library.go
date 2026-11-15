@@ -36,6 +36,10 @@ const (
 // Trash is the parent ID of a trashed entry.
 const Trash = "trash"
 
+// rootAlias is a parent ID of a top-level entry. rmfakecloud writes it,
+// and the tablet shows the entry at the top level.
+const rootAlias = "root"
+
 const (
 	// maxIndex is the maximum size of a document index blob.
 	maxIndex = 4 << 20
@@ -381,6 +385,9 @@ func fill(d *Doc) {
 	d.Visible = true
 	d.Name, _ = d.Meta["visibleName"].(string)
 	d.Parent, _ = d.Meta["parent"].(string)
+	if d.Parent == rootAlias {
+		d.Parent = ""
+	}
 	if ms, ok := d.Meta["lastModified"].(string); ok {
 		if n, err := strconv.ParseInt(ms, 10, 64); err == nil {
 			t := time.UnixMilli(n).UTC()
