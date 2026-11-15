@@ -52,6 +52,9 @@ func NewRenderer(cache *rendercache.Cache, n int, log *slog.Logger) *Renderer {
 	return &Renderer{Cache: cache, Log: log, sem: make(chan struct{}, n)}
 }
 
+// Workers returns the maximum number of renders at the same time.
+func (r *Renderer) Workers() int { return cap(r.sem) }
+
 // pdfPool starts the PDFium pool at the first PDF render, so that a server
 // without PDF renders does not pay for it.
 func (r *Renderer) pdfPool() (*render.PDF, error) {

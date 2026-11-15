@@ -175,6 +175,13 @@ func TestAPILimit(t *testing.T) {
 	}
 }
 
+func TestRenderWorkers(t *testing.T) {
+	e := newEnvWith(t, true, "[render]\nmax_workers = 2\n")
+	if got := e.app.Library.Render.Workers(); got != 2 {
+		t.Errorf("Workers = %d, want 2", got)
+	}
+}
+
 func TestAPILimitOff(t *testing.T) {
 	e := newEnvWith(t, true, "[limits]\napi_per_minute = -1\n")
 	_, owner := e.user("ada@example.org")
