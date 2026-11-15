@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"github.com/brianmcgee/rmhub/internal/ids"
 	"github.com/brianmcgee/rmhub/internal/libops"
 	"github.com/brianmcgee/rmhub/internal/library"
+	"github.com/brianmcgee/rmhub/internal/pages"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
@@ -58,6 +60,7 @@ func (l *Library) Register(m *Mux) {
 	m.Handle("GET /api/v1/library/{id}", auth(l.get))
 	m.Handle("GET /api/v1/library/{id}/content", auth(l.content))
 	m.Handle("GET /api/v1/library/{id}/archive", auth(l.archive))
+	m.Handle("GET /api/v1/library/{id}/pages", auth(l.pages))
 	m.Handle("POST /api/v1/library/folders", auth(l.createFolder))
 	m.Handle("POST /api/v1/library/documents", auth(l.upload))
 	m.Handle("PATCH /api/v1/library/{id}", auth(l.patch))
@@ -281,6 +284,55 @@ func (l *Library) content(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, rc)
 	return nil
+}
+
+// maxContent is the maximum size of a .content file that the page list
+// reads.
+const maxContent = 4 << 20
+
+func (l *Library) pages(w http.ResponseWriter, r *http.Request) error {
+	v, err := l.open(w, r)
+	if err != nil {
+		return err
+	}
+	d, err := v.doc(r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	ps, err := l.pageList(r.Context(), v.s.Account, d)
+	if err != nil {
+		return err
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"pages": ps})
+	return nil
+}
+
+// pageList returns the pages of a document. A folder gives code
+// not_found. A .content file that is not valid gives an internal error
+// that names the document.
+func (l *Library) pageList(ctx context.Context, account string, d *library.Doc) ([]pages.Page, error) {
+	if d.Type == library.TypeFolder {
+		return nil, Errorf(CodeNotFound, "entry %s is a folder and has no pages", d.ID)
+	}
+	var raw []byte
+	if f, ok := d.File(".content"); ok {
+		rc, _, err := l.Blobs.Get(ctx, mustNS(account), f.Hash)
+		switch {
+		case errors.Is(err, blob.ErrNotFound):
+		case err != nil:
+			return nil, err
+		default:
+			raw, err = io.ReadAll(io.LimitReader(rc, maxContent+1))
+			_ = rc.Close()
+			if err != nil {
+				return nil, err
+			}
+			if len(raw) > maxContent {
+				return nil, fmt.Errorf("the .content file of document %s is larger than %d bytes", d.ID, maxContent)
+			}
+		}
+	}
+	return pages.List(d.ID, raw, d.Files)
 }
 
 func mustNS(account string) blob.Namespace {
