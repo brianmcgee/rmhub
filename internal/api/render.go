@@ -57,7 +57,7 @@ func (r *Renderer) pdfPool() (*render.PDF, error) {
 
 // Close stops the PDFium pool if it runs.
 func (r *Renderer) Close() error {
-	r.pdfOnce.Do(func() {})
+	r.pdfOnce.Do(func() { r.pdfErr = errors.New("the renderer is stopped") })
 	if r.pdf != nil {
 		return r.pdf.Close()
 	}

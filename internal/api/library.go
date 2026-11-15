@@ -22,6 +22,8 @@ import (
 	"github.com/brianmcgee/rmhub/internal/libops"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/pages"
+	"github.com/brianmcgee/rmhub/internal/render"
+	"github.com/brianmcgee/rmhub/internal/rendercache"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
@@ -344,23 +346,36 @@ func (l *Library) pageList(ctx context.Context, account string, d *library.Doc) 
 
 // pdfPages returns one page for each page of the PDF of a document whose
 // .content has no page list. A PDF that the API uploaded has no page list
-// until a tablet opens it. These pages have no ID and no .rm file.
+// until a tablet opens it. These pages have no ID and no .rm file. The
+// count goes through the renderer, so it obeys the render limit and the
+// cache keeps it for each PDF.
 func (l *Library) pdfPages(ctx context.Context, account string, d *library.Doc) ([]pages.Page, error) {
 	f, ok := d.File(".pdf")
 	if !ok {
 		return []pages.Page{}, nil
 	}
-	data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
-	if err != nil {
-		return nil, err
-	}
-	pool, err := l.Render.pdfPool()
-	if err != nil {
-		return nil, err
-	}
-	n, err := pool.PageCount(ctx, data)
+	key := rendercache.Key(account, strconv.Itoa(render.Version), "pagecount", f.Hash)
+	b, err := l.Render.image(ctx, key, func(ctx context.Context) ([]byte, error) {
+		data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		pool, err := l.Render.pdfPool()
+		if err != nil {
+			return nil, err
+		}
+		n, err := pool.PageCount(ctx, data)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(strconv.Itoa(n)), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("count the pages of the PDF of document %s: %w", d.ID, err)
+	}
+	n, err := strconv.Atoi(string(b))
+	if err != nil || n < 0 {
+		return nil, fmt.Errorf("the cached page count of the PDF of document %s is not a number", d.ID)
 	}
 	ps := make([]pages.Page, n)
 	for i := range ps {

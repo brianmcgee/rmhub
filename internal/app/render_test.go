@@ -147,3 +147,40 @@ func TestRenderEndpoint(t *testing.T) {
 		t.Fatalf("scoped render: %d", r.status)
 	}
 }
+
+// TestPDFPageCountIsCached makes sure that the page list of a PDF
+// without a page list starts PDFium one time for each PDF.
+func TestPDFPageCountIsCached(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
+	tr.Commit(4)
+
+	rn := e.app.Library.Render
+	first := e.req("GET", "/api/v1/library/plain/pages", owner, nil)
+	if first.status != 200 || rn.Renders.Load() != 1 {
+		t.Fatalf("first page list: status %d, %d PDFium runs, want 200 and 1", first.status, rn.Renders.Load())
+	}
+	again := e.req("GET", "/api/v1/library/plain/pages", owner, nil)
+	if again.status != 200 || !bytes.Equal(again.body, first.body) || rn.Renders.Load() != 1 {
+		t.Fatalf("second page list: status %d, %d PDFium runs, want 200 and 1\n%s", again.status, rn.Renders.Load(), again.body)
+	}
+}
+
+// TestRenderAfterClose makes sure that a PDF request after the renderer
+// stops gives an error and no panic.
+func TestRenderAfterClose(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
+	tr.Commit(4)
+
+	if err := e.app.Library.Render.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.req("GET", "/api/v1/library/plain/pages", owner, nil); r.status != 500 {
+		t.Fatalf("page list after close: %d %s", r.status, r.body)
+	}
+}
