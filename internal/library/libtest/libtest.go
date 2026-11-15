@@ -85,6 +85,32 @@ func New(t testing.TB) *Env {
 	}
 }
 
+// On returns an Env on existing stores. Docs starts with the entries of
+// the current root of the account, so a test can change a tree that an
+// API write made.
+func On(t testing.TB, blobs blob.Store, roots *rootlog.Log, account string) *Env {
+	t.Helper()
+	ns, err := blob.NewNamespace(account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &Env{
+		T: t, Ctx: context.Background(),
+		Blobs: &Counting{Store: blobs, reads: map[string]int{}},
+		Roots: roots, Account: account, NS: ns,
+		Docs: map[string]hashtree.Entry{}, Files: map[string][]hashtree.Entry{},
+	}
+	s, err := library.New(roots, blobs).Current(e.Ctx, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, re := range s.RootEntries() {
+		e.Docs[re.Name] = re
+	}
+	e.Gen = s.Generation
+	return e
+}
+
 // Meta returns a .metadata object like the tablet writes.
 func Meta(name, typ, parent string) map[string]any {
 	return map[string]any{

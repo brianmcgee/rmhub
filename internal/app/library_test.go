@@ -8,90 +8,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/brianmcgee/rmhub/internal/blob"
-	"github.com/brianmcgee/rmhub/internal/hashtree"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/library/libtest"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 )
 
-// tree makes documents as a tablet does and commits them as a device.
-type tree struct {
-	e       *env
-	account string
-	ns      blob.Namespace
-	docs    map[string]hashtree.Entry
-}
-
-// tree reads the current root of the account, so a tree can continue
-// after an API write.
-func (e *env) tree(account string) *tree {
+// tree returns a tree that writes documents as a tablet does and
+// commits them as a device. It starts with the current root.
+func (e *env) tree(account string) *libtest.Env {
 	e.t.Helper()
-	ns, _ := blob.NewNamespace(account)
-	t := &tree{e: e, account: account, ns: ns, docs: map[string]hashtree.Entry{}}
-	s, err := e.app.Library.Lib.Current(context.Background(), account)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	for _, re := range s.RootEntries() {
-		t.docs[re.Name] = re
-	}
-	return t
-}
-
-func (t *tree) put(id string, meta, content map[string]any, extra map[string][]byte) {
-	t.e.t.Helper()
-	ctx, bs := context.Background(), t.e.app.Library.Blobs
-	var files []hashtree.Entry
-	add := func(f hashtree.Entry, err error) {
-		if err != nil {
-			t.e.t.Fatal(err)
-		}
-		files = append(files, f)
-	}
-	add(library.PutJSON(ctx, bs, t.ns, id, ".metadata", meta))
-	add(library.PutJSON(ctx, bs, t.ns, id, ".content", content))
-	for _, ext := range slices.Sorted(maps.Keys(extra)) {
-		add(library.PutFile(ctx, bs, t.ns, id, ext, extra[ext]))
-	}
-	d, err := library.PutDocument(ctx, bs, t.ns, id, files)
-	if err != nil {
-		t.e.t.Fatal(err)
-	}
-	t.docs[id] = d
-}
-
-func (t *tree) folder(id, name, parent string) {
-	t.put(id, libtest.Meta(name, "CollectionType", parent), map[string]any{}, nil)
-}
-
-func (t *tree) pdf(id, name, parent string, body []byte) {
-	t.put(id, libtest.Meta(name, "DocumentType", parent), map[string]any{"fileType": "pdf"}, map[string][]byte{".pdf": body})
-}
-
-func (t *tree) commit() uint64 {
-	t.e.t.Helper()
-	ctx := context.Background()
-	h, err := library.PutRoot(ctx, t.e.app.Library.Blobs, t.ns, 4, slices.Collect(maps.Values(t.docs)))
-	if err != nil {
-		t.e.t.Fatal(err)
-	}
-	cur, err := t.e.app.Roots.Current(ctx, t.account)
-	if err != nil {
-		t.e.t.Fatal(err)
-	}
-	ent, err := t.e.app.Roots.Commit(ctx, t.account, cur.Generation, h, rootlog.Source{Type: rootlog.SourceDevice, ID: "RM110-1"}, true)
-	if err != nil {
-		t.e.t.Fatal(err)
-	}
-	return ent.Generation
+	return libtest.On(e.t, e.app.Library.Blobs, e.app.Roots, account)
 }
 
 type entry struct {
@@ -162,17 +94,17 @@ func TestLibraryRead(t *testing.T) {
 	e := newEnv(t, true)
 	acct, owner := e.user("ada@example.org")
 	tr := e.tree(acct)
-	tr.folder("work", "Work", "")
+	tr.Folder("work", "Work", "")
 	pdf := []byte("%PDF-1.7 paper body")
-	tr.pdf("paper", "Paper", "work", pdf)
-	tr.pdf("n1", "Notes", "", []byte("%PDF-1.7 a"))
-	tr.pdf("n2", "Notes", "", []byte("%PDF-1.7 b"))
-	tr.folder("old", "Old", library.Trash)
-	tr.pdf("inold", "Draft", "old", []byte("%PDF-1.7 c"))
-	tr.put("nb", libtest.Meta("Sketch", "DocumentType", "work"),
+	tr.PDF("paper", "Paper", "work", pdf)
+	tr.PDF("n1", "Notes", "", []byte("%PDF-1.7 a"))
+	tr.PDF("n2", "Notes", "", []byte("%PDF-1.7 b"))
+	tr.Folder("old", "Old", library.Trash)
+	tr.PDF("inold", "Draft", "old", []byte("%PDF-1.7 c"))
+	tr.Put("nb", libtest.Meta("Sketch", "DocumentType", "work"),
 		map[string]any{"fileType": "notebook", "cPages": map[string]any{"pages": []any{map[string]any{"id": "p1"}, map[string]any{"id": "p2"}}}},
 		map[string][]byte{"/p1.rm": []byte("page 1"), "/p2.rm": []byte("page 2")})
-	gen := tr.commit()
+	gen := tr.Commit(4).Generation
 
 	r := e.req("GET", "/api/v1/library", owner, nil)
 	if r.status != 200 || r.names(t) != "Notes,Notes,Work" || r.header.Get("RMHub-Generation") != fmt.Sprint(gen) {
@@ -190,7 +122,7 @@ func TestLibraryRead(t *testing.T) {
 
 	r = e.req("GET", "/api/v1/library/paper", owner, nil)
 	en := r.entry(t)
-	if r.status != 200 || en.Path != "/Work/Paper" || en.Type != "pdf" || en.Name != "Paper" || r.header.Get("ETag") != `"`+tr.docs["paper"].Hash+`"` {
+	if r.status != 200 || en.Path != "/Work/Paper" || en.Type != "pdf" || en.Name != "Paper" || r.header.Get("ETag") != `"`+tr.Docs["paper"].Hash+`"` {
 		t.Fatalf("read: %d %s %v", r.status, r.body, r.header)
 	}
 	if en := e.req("GET", "/api/v1/library/inold", owner, nil).entry(t); !en.Trashed || en.Path != "/trash/Old/Draft" {
@@ -265,8 +197,8 @@ func TestLibraryWrites(t *testing.T) {
 	e := newEnvWith(t, true, "[api]\nmax_upload_bytes = 4096\n")
 	acct, owner := e.user("ada@example.org")
 	tr := e.tree(acct)
-	tr.pdf("d", "D", "", []byte("%PDF-1.7 d"))
-	tr.commit()
+	tr.PDF("d", "D", "", []byte("%PDF-1.7 d"))
+	tr.Commit(4)
 	user := e.device(owner, "RM110-1")
 	ws := e.listen(user, true)
 
@@ -319,8 +251,8 @@ func TestLibraryWrites(t *testing.T) {
 	// The tablet changes D after the read.
 	tag = r.header.Get("ETag")
 	tr = e.tree(acct)
-	tr.pdf("d", "D tablet", inbox.ID, []byte("%PDF-1.7 d"))
-	tr.commit()
+	tr.PDF("d", "D tablet", inbox.ID, []byte("%PDF-1.7 d"))
+	tr.Commit(4)
 	if r := e.jreq("PATCH", "/api/v1/library/d", owner, map[string]string{"name": "D3"}, "If-Match", tag); r.status != 412 {
 		t.Fatalf("stale If-Match: %d %s", r.status, r.body)
 	}
@@ -365,14 +297,14 @@ func TestScopedTokens(t *testing.T) {
 	e := newEnv(t, true)
 	acct, owner := e.user("ada@example.org")
 	tr := e.tree(acct)
-	tr.folder("agent", "Agent", "")
-	tr.folder("sub", "Sub", "agent")
-	tr.pdf("doc", "Doc", "agent", []byte("%PDF-1.7 a"))
-	tr.folder("ref", "Ref", "")
-	tr.pdf("refdoc", "RefDoc", "ref", []byte("%PDF-1.7 r"))
-	tr.pdf("private", "Private", "", []byte("%PDF-1.7 p"))
-	tr.folder("gone", "Gone", library.Trash)
-	tr.commit()
+	tr.Folder("agent", "Agent", "")
+	tr.Folder("sub", "Sub", "agent")
+	tr.PDF("doc", "Doc", "agent", []byte("%PDF-1.7 a"))
+	tr.Folder("ref", "Ref", "")
+	tr.PDF("refdoc", "RefDoc", "ref", []byte("%PDF-1.7 r"))
+	tr.PDF("private", "Private", "", []byte("%PDF-1.7 p"))
+	tr.Folder("gone", "Gone", library.Trash)
+	tr.Commit(4)
 
 	for name, g := range map[string][]map[string]string{
 		"document":       grantsOf("doc", "read"),
@@ -563,10 +495,10 @@ func TestChangeFeed(t *testing.T) {
 	e.app.Library.Feed.TokenCheck = 50 * time.Millisecond
 	acct, owner := e.user("ada@example.org")
 	tr := e.tree(acct)
-	tr.folder("f", "F", "")
-	tr.pdf("d", "D", "f", []byte("%PDF-1.7 d"))
-	tr.pdf("x", "X", "", []byte("%PDF-1.7 x"))
-	g1 := tr.commit()
+	tr.Folder("f", "F", "")
+	tr.PDF("d", "D", "f", []byte("%PDF-1.7 d"))
+	tr.PDF("x", "X", "", []byte("%PDF-1.7 x"))
+	g1 := tr.Commit(4).Generation
 
 	if _, status := e.feed(owner, "Last-Event-ID", fmt.Sprint(g1+1)); status != 400 {
 		t.Fatalf("after above the current generation: %d", status)
@@ -575,8 +507,8 @@ func TestChangeFeed(t *testing.T) {
 	_, scopedTok := tokenText(t, e.scoped(owner, map[string]any{"grants": grantsOf("f", "read")}))
 	sf, _ := e.feed(scopedTok)
 
-	tr.pdf("d", "D", library.Trash, []byte("%PDF-1.7 d"))
-	g2 := tr.commit()
+	tr.PDF("d", "D", library.Trash, []byte("%PDF-1.7 d"))
+	g2 := tr.Commit(4).Generation
 	ev := f.next(t)
 	if ev.ID != fmt.Sprint(g2) || ev.Data.Generation != g2 || len(ev.Data.Changes) != 1 || ev.Data.Changes[0].Op != "trashed" || ev.Data.Source.Type != "device" {
 		t.Fatalf("event %+v", ev)
@@ -585,8 +517,8 @@ func TestChangeFeed(t *testing.T) {
 		t.Fatalf("scoped event %+v", ev)
 	}
 	// A change outside the grant gives the scoped feed no event.
-	tr.pdf("x", "X2", "", []byte("%PDF-1.7 x"))
-	g3 := tr.commit()
+	tr.PDF("x", "X2", "", []byte("%PDF-1.7 x"))
+	g3 := tr.Commit(4).Generation
 	if ev := f.next(t); ev.Data.Generation != g3 {
 		t.Fatalf("event %+v", ev)
 	}
@@ -600,8 +532,8 @@ func TestChangeFeed(t *testing.T) {
 	// Many commits overflow the broker buffer. The feed sends each one.
 	e.app.Library.Feed.Poll = 50 * time.Millisecond
 	for i := range rootlog.BufferSize * 2 {
-		tr.pdf("x", fmt.Sprintf("X%d", i), "", []byte("%PDF-1.7 x"))
-		tr.commit()
+		tr.PDF("x", fmt.Sprintf("X%d", i), "", []byte("%PDF-1.7 x"))
+		tr.Commit(4)
 	}
 	for i := range rootlog.BufferSize * 2 {
 		if ev := f.next(t); ev.Data.Generation != g3+uint64(i)+1 {
