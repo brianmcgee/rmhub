@@ -79,6 +79,7 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		Log:        log,
 		TempDir:    stores.TempDir,
 		CheckFiles: cfg.Tablet.CheckFiles != "none",
+		MaxBlob:    cfg.Tablet.MaxBlobBytes,
 	}
 	cache, err := rendercache.New(cfg.Render.CacheDir, cfg.Render.CacheMaxBytes)
 	if err != nil {

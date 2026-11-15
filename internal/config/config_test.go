@@ -119,6 +119,7 @@ func TestErrors(t *testing.T) {
 		{"host with path", "[tablet]\nannounced_host = \"rmhub.example.org/x\"\n", "tablet.announced_host"},
 		{"bad check_files", "[tablet]\ncheck_files = \"some\"\n", "tablet.check_files"},
 		{"negative upload limit", "[api]\nmax_upload_bytes = -1\n", "api.max_upload_bytes"},
+		{"negative blob limit", "[tablet]\nmax_blob_bytes = -1\n", "tablet.max_blob_bytes"},
 		{"negative cache limit", "[render]\ncache_max_bytes = -1\n", "render.cache_max_bytes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

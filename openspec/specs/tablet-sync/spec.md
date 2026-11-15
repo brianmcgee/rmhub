@@ -139,6 +139,13 @@ blob only if one of these conditions is true:
 Otherwise the server MUST answer with status 400 and MUST NOT store the
 blob.
 
+A body larger than `tablet.max_blob_bytes` (default 256 MiB) MUST get
+status 413, and the server MUST NOT store the blob.
+
+#### Scenario: Body larger than the limit
+- **WHEN** a tablet writes a body that is larger than `tablet.max_blob_bytes`
+- **THEN** the server answers with status 413 and does not store the blob
+
 #### Scenario: Valid file
 - **WHEN** a tablet writes a body whose SHA-256 is the hash
 - **THEN** the server answers with status 200 and stores the blob
