@@ -1,0 +1,41 @@
+rmhub
+Copyright the rmhub authors.
+Licensed under the GNU Affero General Public License, version 3 or later.
+
+This product contains code and data from other projects.
+
+internal/rmfile
+  Source:  https://github.com/ddvk/rmapi, directory encoding/rm
+  Commit:  74a8e2e (rmapi 0.0.35)
+  Licence: GNU Affero General Public License, version 3
+  Files:   rm.go, unmarshal.go, v6.go, unmarshal_test.go,
+           testdata/test_v3.rm, testdata/test_v5.rm
+  Changes: package name rmfile; error messages; marshal.go removed;
+           the v6 reader keeps the raw X value and returns parse errors.
+           The copy stays under AGPL-3.0.
+
+internal/rmfile/testdata
+  Source:  https://github.com/ricklupton/rmscene, directory tests/data
+  Commit:  d7d86ca
+  Licence: MIT License, Copyright (c) 2023 Rick Lupton
+  Files:   Color_and_tool_v3.14.4.rm, Wikipedia_highlighted_p1.rm,
+           Normal_A_stroke_2_layers_v3.3.2.rm
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

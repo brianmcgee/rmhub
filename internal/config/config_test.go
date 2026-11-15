@@ -119,6 +119,7 @@ func TestErrors(t *testing.T) {
 		{"host with path", "[tablet]\nannounced_host = \"rmhub.example.org/x\"\n", "tablet.announced_host"},
 		{"bad check_files", "[tablet]\ncheck_files = \"some\"\n", "tablet.check_files"},
 		{"negative upload limit", "[api]\nmax_upload_bytes = -1\n", "api.max_upload_bytes"},
+		{"negative cache limit", "[render]\ncache_max_bytes = -1\n", "render.cache_max_bytes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := config.Parse(tc.text)
@@ -142,5 +143,26 @@ func TestTabletSettings(t *testing.T) {
 		if err != nil || cfg.Tablet.AnnouncedHost != host || cfg.Tablet.CheckFiles != "none" {
 			t.Fatalf("%s: %+v %v", host, cfg, err)
 		}
+	}
+}
+
+func TestRenderSettings(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	cfg, err := config.Parse("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Render.CacheDir != filepath.Join(cache, "rmhub", "render") || cfg.Render.CacheMaxBytes != 1<<30 {
+		t.Fatalf("defaults: %+v", cfg.Render)
+	}
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "/home/u")
+	if cfg, err = config.Parse(""); err != nil || cfg.Render.CacheDir != "/home/u/.cache/rmhub/render" {
+		t.Fatalf("without XDG_CACHE_HOME: %+v %v", cfg.Render, err)
+	}
+	cfg, err = config.Parse("[render]\ncache_dir = \"/var/cache/r\"\ncache_max_bytes = 1000\n")
+	if err != nil || cfg.Render.CacheDir != "/var/cache/r" || cfg.Render.CacheMaxBytes != 1000 {
+		t.Fatalf("explicit: %+v %v", cfg.Render, err)
 	}
 }

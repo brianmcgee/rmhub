@@ -152,3 +152,74 @@ requirement changes to apply to notebook pages only.
   from no measurement.
 - [The copied parser misses new format features] → The copy is small
   and has tests. A new feature of the format needs a change to the copy.
+
+## Implementation notes
+
+### Decisions that differ from the plan
+
+- **No tdewolff/canvas.** `canvas` links TeX, X11 and about fifty
+  Latin Modern fonts under the GUST Font License into the binary. That
+  licence is based on the LPPL, and the FSF does not list the LPPL as
+  compatible with the GPL. To keep the AGPL position clear, the renderer
+  uses `golang.org/x/image/vector` (BSD-3-Clause) for PNG and writes SVG
+  directly. Each segment is a convex polygon with round caps (8 steps for
+  each half circle). The output of the smoke fixtures did not change
+  visibly when canvas was replaced.
+- **Highlighter strokes.** A highlighter stroke is one mask with the mean
+  width, filled one time at 40 % opacity. Thus the overlap of two
+  segments does not add opacity. Other strokes are filled segment by
+  segment.
+- **Shader pen and explicit line colors.** The v6 reader now reads the
+  optional RGBA color of a line (tag 8, firmware 3.6 and later). The
+  renderer uses it when it is present. The shader pen (23) draws at
+  40 % opacity like the highlighter. The color index HighlightDynamic
+  without an RGBA value is drawn yellow.
+- **Page growth includes the stroke width.** The page grows to contain
+  each point plus half its width, then the 20-unit margin.
+- **White background in each format.** PNG and SVG both get a white
+  rectangle. The SVG uses page units in its `viewBox` and the requested
+  width in its `width` attribute.
+- **PDF page placement.** The PDF page is drawn at the top left with a
+  width of 1404 units. Its height is `1404 × height / width` of the PDF
+  page. The v6 X origin is 702 on PDF pages too.
+- **pdfPage for each file type.** In the cPages format, `pdfPage` comes
+  from `redir` for each file type. In the old format, it comes from
+  `redirectionPageMap` for PDF documents only.
+- **PDF without page list.** A PDF that the API uploaded has an empty page
+  list until a tablet opens it. For such a document, the page list has
+  one page for each PDF page, with an empty ID and no `.rm` file. The
+  spec delta of `page-model` has this requirement.
+- **PDFium sandbox.** The PDFium instances get an empty wazero file
+  system, so a PDF cannot read host files. The pool starts at the first
+  PDF render or page count, with at most one instance for each CPU
+  thread.
+- **Parser strictness.** The copied v6 reader fails the full page on a
+  bad block. Before, it skipped the block silently, which gave a wrong
+  image with no error.
+- **Test data.** rmapi has no v6 fixtures. The v6 fixtures come from
+  rmscene (MIT, commit d7d86ca). `NOTICE` records both sources.
+  `internal/rmfile/rmtest` writes small v6 files for the tests, and
+  `internal/render/rendertest` has a hand-written PDF with a red
+  rectangle and Helvetica text.
+- **Exit codes.** Status 400 (for example SVG of a PDF page or a width out
+  of range) gives exit code 1, as the foundation exit code contract says.
+
+### Blocked
+
+- **Tasks 6.1 and 6.2 (Paper Pro calibration)** need a fixture from the
+  user's tablet. No such fixture is available in this session, so the
+  page size constants stay at 1404 × 1872 and the renderer version stays
+  at 1. When the fixture is available, measure the corner marks and the
+  PDF mark as task 6.2 says.
+
+### Verification
+
+- `go test ./...`, `golangci-lint run ./...` and `nix fmt` pass.
+- `nix build .#rmhub` builds with `CGO_ENABLED=0`, PDFium included.
+- Smoke run against a local server with a scoped token: `rmhub pages`
+  listed the 10 pages of an uploaded PDF, `rmhub render --page 1` wrote a
+  1404 × 1987 PNG that shows the PDF text, `-o -` wrote a 702-pixel PNG to
+  standard output, and `--format svg` on the PDF page gave exit code 1.
+  The cache directory held one file for each render.
+- PDFium output is deterministic for one PDF and one width: `TestPDF`
+  compares the bytes of two renders.

@@ -1,12 +1,11 @@
-# Spec Delta
+# page-model Specification
 
 ## Purpose
-
 A document has an ordered list of pages in its `.content`. A page can
 have a `.rm` file with strokes and, in a PDF, a page of the PDF. Clients
 need this list to select a page to render and to see which page changed.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Page list from cPages
 When `.content` has `cPages.pages`, the page list MUST contain each entry
@@ -27,6 +26,17 @@ from `redirectionPageMap` at the same position, if the value is 0 or more.
 - **GIVEN** `.content` has `"pages":["a","b"]` and no `cPages`
 - **WHEN** rmhub builds the page list
 - **THEN** the list has `a` as page 1 and `b` as page 2
+
+### Requirement: PDF without page list
+When the page list of a PDF document is empty, the page list MUST have
+one page for each page of the PDF. The page number and `pdfPage` MUST be
+the PDF page. `id` MUST be empty and `rmHash` MUST be `null`. A PDF that
+the API uploaded has no page list until a tablet opens it.
+
+#### Scenario: Uploaded PDF
+- **GIVEN** the API uploaded a PDF with 3 pages, and no tablet opened it
+- **WHEN** rmhub builds the page list
+- **THEN** the list has 3 pages, and page 2 has `"pdfPage":2`
 
 ### Requirement: Page fields
 Each page MUST have `number`, `id`, `pdfPage` and `rmHash`. `pdfPage` MUST

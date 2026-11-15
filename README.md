@@ -50,6 +50,8 @@ conditional write. A backend that accepts the write stops the server.
 | `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
 | `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
 | `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
+| `render.cache_dir` | `$XDG_CACHE_HOME/rmhub/render` | Directory of the page render cache. Without `XDG_CACHE_HOME`, `~/.cache` is used. |
+| `render.cache_max_bytes` | `1073741824` | Maximum size of the render cache, in bytes. The oldest files are deleted first. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
@@ -204,6 +206,8 @@ token = "rmh_…"
 | `rmhub account set-schema <3\|4>` | Set the root index schema that the server announces to the tablets. |
 | `rmhub ls [entry]`, `rmhub stat <entry>`, `rmhub find <text>` | Read the library. |
 | `rmhub get <entry> [-o <file>] [--archive]` | Download a PDF, an EPUB or the archive of a document. |
+| `rmhub pages <entry>` | List the pages of a document. |
+| `rmhub render <entry> --page <n> [--format png\|svg] [--width <px>] [-o <file>]` | Render a page of a notebook or a PDF as an image. |
 | `rmhub upload <file> [--to <entry>] [--name <name>]` | Upload a PDF or an EPUB. |
 | `rmhub mkdir`, `rmhub mv`, `rmhub rename`, `rmhub trash` | Change the library. Each change gets to the tablets at their next sync. |
 | `rmhub watch [--after <generation>]` | Print the changes of the library, one JSON line for each generation. |

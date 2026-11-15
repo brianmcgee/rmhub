@@ -65,6 +65,7 @@ func newEnvWith(t *testing.T, admin bool, extra string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.Render.CacheDir = filepath.Join(dir, "render")
 	e := &env{t: t, now: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)}
 	if admin {
 		e.admin = tokens.GenerateAdmin()

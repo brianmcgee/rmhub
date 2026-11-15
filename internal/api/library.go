@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"github.com/brianmcgee/rmhub/internal/ids"
 	"github.com/brianmcgee/rmhub/internal/libops"
 	"github.com/brianmcgee/rmhub/internal/library"
+	"github.com/brianmcgee/rmhub/internal/pages"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
@@ -47,6 +49,8 @@ type Library struct {
 	// Stop ends each open change feed when it closes, so that a server
 	// shutdown does not wait for the streams.
 	Stop <-chan struct{}
+	// Render renders pages for the render endpoint.
+	Render *Renderer
 }
 
 // Register adds the library endpoints and the change feed to the mux.
@@ -58,6 +62,8 @@ func (l *Library) Register(m *Mux) {
 	m.Handle("GET /api/v1/library/{id}", auth(l.get))
 	m.Handle("GET /api/v1/library/{id}/content", auth(l.content))
 	m.Handle("GET /api/v1/library/{id}/archive", auth(l.archive))
+	m.Handle("GET /api/v1/library/{id}/pages", auth(l.pages))
+	m.Handle("GET /api/v1/library/{id}/pages/{number}/render", auth(l.renderPage))
 	m.Handle("POST /api/v1/library/folders", auth(l.createFolder))
 	m.Handle("POST /api/v1/library/documents", auth(l.upload))
 	m.Handle("PATCH /api/v1/library/{id}", auth(l.patch))
@@ -281,6 +287,86 @@ func (l *Library) content(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, rc)
 	return nil
+}
+
+// maxContent is the maximum size of a .content file that the page list
+// reads.
+const maxContent = 4 << 20
+
+func (l *Library) pages(w http.ResponseWriter, r *http.Request) error {
+	v, err := l.open(w, r)
+	if err != nil {
+		return err
+	}
+	d, err := v.doc(r.PathValue("id"))
+	if err != nil {
+		return err
+	}
+	ps, err := l.pageList(r.Context(), v.s.Account, d)
+	if err != nil {
+		return err
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"pages": ps})
+	return nil
+}
+
+// pageList returns the pages of a document. A folder gives code
+// not_found. A .content file that is not valid gives an internal error
+// that names the document.
+func (l *Library) pageList(ctx context.Context, account string, d *library.Doc) ([]pages.Page, error) {
+	if d.Type == library.TypeFolder {
+		return nil, Errorf(CodeNotFound, "entry %s is a folder and has no pages", d.ID)
+	}
+	var raw []byte
+	if f, ok := d.File(".content"); ok {
+		rc, _, err := l.Blobs.Get(ctx, mustNS(account), f.Hash)
+		switch {
+		case errors.Is(err, blob.ErrNotFound):
+		case err != nil:
+			return nil, err
+		default:
+			raw, err = io.ReadAll(io.LimitReader(rc, maxContent+1))
+			_ = rc.Close()
+			if err != nil {
+				return nil, err
+			}
+			if len(raw) > maxContent {
+				return nil, fmt.Errorf("the .content file of document %s is larger than %d bytes", d.ID, maxContent)
+			}
+		}
+	}
+	ps, err := pages.List(d.ID, raw, d.Files)
+	if err != nil || len(ps) > 0 || d.Type != library.TypePDF {
+		return ps, err
+	}
+	return l.pdfPages(ctx, account, d)
+}
+
+// pdfPages returns one page for each page of the PDF of a document whose
+// .content has no page list. A PDF that the API uploaded has no page list
+// until a tablet opens it. These pages have no ID and no .rm file.
+func (l *Library) pdfPages(ctx context.Context, account string, d *library.Doc) ([]pages.Page, error) {
+	f, ok := d.File(".pdf")
+	if !ok {
+		return []pages.Page{}, nil
+	}
+	data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := l.Render.pdfPool()
+	if err != nil {
+		return nil, err
+	}
+	n, err := pool.PageCount(ctx, data)
+	if err != nil {
+		return nil, fmt.Errorf("count the pages of the PDF of document %s: %w", d.ID, err)
+	}
+	ps := make([]pages.Page, n)
+	for i := range ps {
+		ps[i] = pages.Page{Number: i + 1, PDFPage: new(i + 1)}
+	}
+	return ps, nil
 }
 
 func mustNS(account string) blob.Namespace {

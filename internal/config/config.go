@@ -25,7 +25,19 @@ type Config struct {
 	Admin   AdminConfig  `toml:"admin"`
 	Tablet  TabletConfig `toml:"tablet"`
 	API     APIConfig    `toml:"api"`
+	Render  RenderConfig `toml:"render"`
 }
+
+// RenderConfig has the settings of the page render cache.
+type RenderConfig struct {
+	// CacheDir holds the render results.
+	CacheDir string `toml:"cache_dir"`
+	// CacheMaxBytes is the maximum size of the cache.
+	CacheMaxBytes int64 `toml:"cache_max_bytes"`
+}
+
+// DefaultCacheMaxBytes is the default of render.cache_max_bytes (1 GiB).
+const DefaultCacheMaxBytes = 1 << 30
 
 // APIConfig has the settings of the rmhub API.
 type APIConfig struct {
@@ -175,6 +187,12 @@ func (c *Config) setDefaults() {
 	if c.Tablet.CheckFiles == "" {
 		c.Tablet.CheckFiles = "truthful"
 	}
+	if c.Render.CacheDir == "" {
+		c.Render.CacheDir = filepath.Join(xdg.CacheHome(), "rmhub", "render")
+	}
+	if c.Render.CacheMaxBytes == 0 {
+		c.Render.CacheMaxBytes = DefaultCacheMaxBytes
+	}
 }
 
 func (c *Config) validate() error {
@@ -214,6 +232,9 @@ func (c *Config) validate() error {
 	}
 	if c.API.MaxUploadBytes < 0 {
 		return fmt.Errorf("api.max_upload_bytes: the value must be positive")
+	}
+	if c.Render.CacheMaxBytes < 0 {
+		return fmt.Errorf("render.cache_max_bytes: the value must be positive")
 	}
 	if c.Tablet.CheckFiles != "truthful" && c.Tablet.CheckFiles != "none" {
 		return fmt.Errorf("tablet.check_files: unknown value %q (use truthful or none)", c.Tablet.CheckFiles)

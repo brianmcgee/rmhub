@@ -415,8 +415,10 @@ func pageCount(c map[string]any) int {
 	pages, _ := cp["pages"].([]any)
 	n := 0
 	for _, p := range pages {
-		if pm, ok := p.(map[string]any); ok && pm["deleted"] != nil {
-			continue
+		if pm, ok := p.(map[string]any); ok {
+			if del, ok := pm["deleted"].(map[string]any); ok && del["value"] != 0.0 {
+				continue
+			}
 		}
 		n++
 	}

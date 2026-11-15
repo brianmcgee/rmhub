@@ -18,7 +18,7 @@ pkgs.buildGoModule {
 
   env.CGO_ENABLED = 0;
 
-  vendorHash = "sha256-ozaDMC1q9jP0krjBbmqle+wLIc3EycbvxRGgHs1Y6iM=";
+  vendorHash = "sha256-Nt/A8wV+YDdjnbBZN8w6FALzgyDfPx+vGDkZHVncBdM=";
 
   subPackages = [ "cmd/rmhub" ];
 
