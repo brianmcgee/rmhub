@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/brianmcgee/rmhub/internal/app"
+	blobfs "github.com/brianmcgee/rmhub/internal/blob/fs"
 	"github.com/brianmcgee/rmhub/internal/config"
 	"github.com/brianmcgee/rmhub/internal/server"
 	"github.com/brianmcgee/rmhub/internal/state/sqlite"
@@ -37,6 +39,26 @@ func rmhub(env map[string]string, args ...string) result {
 // and admin token.
 func testServer(t *testing.T) (string, string) {
 	t.Helper()
+	ts := newTestServer(t)
+	return ts.url, ts.admin
+}
+
+// testSrv is a server in the test process. stop and start simulate a
+// restart on the same address and the same stores.
+type testSrv struct {
+	t     *testing.T
+	url   string
+	admin string
+	cfg   *config.Config
+	st    *sqlite.Store
+	blobs *blobfs.Store
+	app   *app.App
+	addr  string
+	srv   *httptest.Server
+}
+
+func newTestServer(t *testing.T) *testSrv {
+	t.Helper()
 	dir := t.TempDir()
 	cfg, err := config.Parse("data_dir = \"" + dir + "\"")
 	if err != nil {
@@ -52,13 +74,43 @@ func testServer(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	a, err := app.New(context.Background(), cfg, &server.Stores{State: st}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	blobs, err := blobfs.New(cfg.Blob.Dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(a.APIHandler())
-	t.Cleanup(srv.Close)
-	return srv.URL, admin
+	ts := &testSrv{t: t, admin: admin, cfg: cfg, st: st, blobs: blobs}
+	ts.start()
+	return ts
+}
+
+// start makes a new app on the stores and serves it on the address of
+// the last server, or on a new address.
+func (ts *testSrv) start() {
+	ts.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	ts.t.Cleanup(cancel)
+	a, err := app.New(ctx, ts.cfg, &server.Stores{State: ts.st, Blob: ts.blobs, TempDir: ts.blobs.TempDir()}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		ts.t.Fatal(err)
+	}
+	ts.app = a
+	srv := httptest.NewUnstartedServer(a.APIHandler())
+	if ts.addr != "" {
+		_ = srv.Listener.Close()
+		l, err := net.Listen("tcp", ts.addr)
+		if err != nil {
+			ts.t.Fatal(err)
+		}
+		srv.Listener = l
+	}
+	srv.Start()
+	ts.t.Cleanup(srv.Close)
+	ts.srv, ts.addr, ts.url = srv, srv.Listener.Addr().String(), srv.URL
+}
+
+func (ts *testSrv) stop() {
+	ts.srv.CloseClientConnections()
+	ts.srv.Close()
 }
 
 func isolate(t *testing.T) string {

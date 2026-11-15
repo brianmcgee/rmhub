@@ -184,14 +184,7 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) ([]
 		return nil, err
 	}
 	if res.StatusCode >= 400 {
-		e := &apiError{status: res.StatusCode}
-		var eb struct {
-			Error struct{ Code, Message string }
-		}
-		if json.Unmarshal(b, &eb) == nil && eb.Error.Code != "" {
-			e.code, e.message, e.body = eb.Error.Code, eb.Error.Message, bytes.TrimSpace(b)
-		}
-		return nil, e
+		return nil, parseAPIError(res.StatusCode, b)
 	}
 	if out != nil && len(b) > 0 {
 		if err := json.Unmarshal(b, out); err != nil {
@@ -199,6 +192,18 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) ([]
 		}
 	}
 	return b, nil
+}
+
+// parseAPIError reads the error body of a response.
+func parseAPIError(status int, b []byte) error {
+	e := &apiError{status: status}
+	var eb struct {
+		Error struct{ Code, Message string }
+	}
+	if json.Unmarshal(b, &eb) == nil && eb.Error.Code != "" {
+		e.code, e.message, e.body = eb.Error.Code, eb.Error.Message, bytes.TrimSpace(b)
+	}
+	return e
 }
 
 // parseExpires reads an expiry time as RFC 3339 time or as a duration
