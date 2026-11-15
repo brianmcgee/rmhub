@@ -15,8 +15,8 @@
 
 ## 3. Client address
 
-- [ ] 3.1 Write the function that returns the client address of a request from the peer address, `X-Forwarded-For` and the trusted proxies. Verify with a test for each scenario of the requirement `Client address`.
-- [ ] 3.2 Make the key of an IPv6 address its /64 network. Verify with a test that two addresses of one /64 give one key.
+- [x] 3.1 Write the function that returns the client address of a request from the peer address, `X-Forwarded-For` and the trusted proxies. Verify with a test for each scenario of the requirement `Client address`.
+- [x] 3.2 Make the key of an IPv6 address its /64 network. Verify with a test that two addresses of one /64 give one key.
 
 ## 4. Pairing limit
 
