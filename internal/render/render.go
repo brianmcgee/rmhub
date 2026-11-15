@@ -61,6 +61,9 @@ const (
 	maxGrowX  = 16
 	maxGrowY  = 256
 	maxPixels = 64 << 20
+	// maxWork is the limit of the drawing work of one image, in touched
+	// pixels. It keeps a render to some seconds.
+	maxWork = 32 * maxPixels
 )
 
 // finite is true if each value is a finite number.
@@ -294,27 +297,65 @@ func capsule(z *vector.Rasterizer, ax, ay, bx, by, w, ox, oy float64) {
 	z.ClosePath()
 }
 
-// paint fills the polygons that add gives into img, with the color c.
-// The bounds x0, y0, x1, y1 are in pixels and contain each polygon.
-func paint(img *image.RGBA, c color.Color, x0, y0, x1, y1 float64, add func(z *vector.Rasterizer, ox, oy float64)) {
-	b := image.Rect(int(math.Floor(x0)), int(math.Floor(y0)), int(math.Ceil(x1)), int(math.Ceil(y1)))
-	if b.Intersect(img.Bounds()) != b || b.Empty() {
-		// The layout contains each stroke, so this is a rounding case at
-		// the edge. Clip the bounds; the rasterizer clips the polygon.
-		b = b.Intersect(img.Bounds())
-		if b.Empty() {
-			return
-		}
+// lineWork is the work for one pixel of the length of a segment, in
+// units of maxWork.
+const lineWork = 8
+
+// painter draws polygons onto img. Without img, it only adds up the
+// work of the drawing.
+type painter struct {
+	img    *image.RGBA
+	bounds image.Rectangle
+	// work is the number of pixels that the drawing touches. One small
+	// file can ask for much work: each segment touches each pixel of
+	// its bounds.
+	work int64
+}
+
+// paint fills the polygons that add gives, with the color c. The bounds
+// x0, y0, x1, y1 are in pixels and contain each polygon.
+func (p *painter) paint(c color.Color, x0, y0, x1, y1 float64, add func(z *vector.Rasterizer, ox, oy float64)) {
+	// The layout contains each stroke, so bounds outside the image are a
+	// rounding case at the edge. Clip the bounds; the rasterizer clips
+	// the polygon.
+	b := image.Rect(int(math.Floor(x0)), int(math.Floor(y0)), int(math.Ceil(x1)), int(math.Ceil(y1))).Intersect(p.bounds)
+	if b.Empty() {
+		return
+	}
+	p.work += int64(b.Dx()) * int64(b.Dy())
+	if p.img == nil {
+		return
 	}
 	z := vector.NewRasterizer(b.Dx(), b.Dy())
 	z.DrawOp = draw.Over
 	add(z, float64(b.Min.X), float64(b.Min.Y))
-	z.Draw(img, b, image.NewUniform(c), image.Point{})
+	z.Draw(p.img, b, image.NewUniform(c), image.Point{})
+}
+
+// segment adds the work for the outline of one segment from a to b.
+func (p *painter) segment(a, b pt, w, res float64) {
+	p.work += lineWork * int64((math.Abs(a.x-b.x)+math.Abs(a.y-b.y))*res+w)
+}
+
+// checkWork returns ErrTooLarge if the drawing of the strokes and
+// highlights onto an image with the bounds needs more work than maxWork.
+func checkWork(bounds image.Rectangle, ss []stroke, rs []rect, res float64) error {
+	p := painter{bounds: bounds}
+	p.run(ss, rs, res)
+	if p.work > maxWork {
+		return ErrTooLarge
+	}
+	return nil
 }
 
 // rasterize draws the strokes and highlights onto img. res is the number
 // of pixels for one page unit.
 func rasterize(img *image.RGBA, ss []stroke, rs []rect, res float64) {
+	p := painter{img: img, bounds: img.Bounds()}
+	p.run(ss, rs, res)
+}
+
+func (p *painter) run(ss []stroke, rs []rect, res float64) {
 	for _, s := range ss {
 		pts := s.pts
 		if len(pts) == 1 {
@@ -333,7 +374,10 @@ func rasterize(img *image.RGBA, ss []stroke, rs []rect, res float64) {
 				x0, y0 = math.Min(x0, p.x*res-w), math.Min(y0, p.y*res-w)
 				x1, y1 = math.Max(x1, p.x*res+w), math.Max(y1, p.y*res+w)
 			}
-			paint(img, withAlpha(s.color, highlightAlpha), x0, y0, x1, y1, func(z *vector.Rasterizer, ox, oy float64) {
+			for i := 1; i < len(pts); i++ {
+				p.segment(pts[i-1], pts[i], w, res)
+			}
+			p.paint(withAlpha(s.color, highlightAlpha), x0, y0, x1, y1, func(z *vector.Rasterizer, ox, oy float64) {
 				for i := 1; i < len(pts); i++ {
 					capsule(z, pts[i-1].x*res, pts[i-1].y*res, pts[i].x*res, pts[i].y*res, w, ox, oy)
 				}
@@ -343,7 +387,8 @@ func rasterize(img *image.RGBA, ss []stroke, rs []rect, res float64) {
 		for i := 1; i < len(pts); i++ {
 			a, b := pts[i-1], pts[i]
 			w := (a.w + b.w) / 2 * res
-			paint(img, s.color,
+			p.segment(a, b, w, res)
+			p.paint(s.color,
 				math.Min(a.x, b.x)*res-w, math.Min(a.y, b.y)*res-w,
 				math.Max(a.x, b.x)*res+w, math.Max(a.y, b.y)*res+w,
 				func(z *vector.Rasterizer, ox, oy float64) {
@@ -353,7 +398,7 @@ func rasterize(img *image.RGBA, ss []stroke, rs []rect, res float64) {
 	}
 	for _, r := range rs {
 		x0, y0, x1, y1 := r.x*res, r.y*res, (r.x+r.w)*res, (r.y+r.h)*res
-		paint(img, withAlpha(r.color, highlightAlpha), x0, y0, x1, y1, func(z *vector.Rasterizer, ox, oy float64) {
+		p.paint(withAlpha(r.color, highlightAlpha), x0, y0, x1, y1, func(z *vector.Rasterizer, ox, oy float64) {
 			z.MoveTo(float32(x0-ox), float32(y0-oy))
 			z.LineTo(float32(x1-ox), float32(y0-oy))
 			z.LineTo(float32(x1-ox), float32(y1-oy))
@@ -449,7 +494,11 @@ func Render(data []byte, base Base, format Format, width int) ([]byte, error) {
 	}
 	ss, rs := shapes(rm, l)
 	res := float64(width) / l.w()
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	bounds := image.Rect(0, 0, width, height)
+	if err := checkWork(bounds, ss, rs, res); err != nil {
+		return nil, err
+	}
+	img := image.NewRGBA(bounds)
 	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
 	rasterize(img, ss, rs, res)
 	return encodePNG(img)
@@ -471,7 +520,13 @@ func renderPDF(rm *rmfile.Rm, base Base, width int) ([]byte, error) {
 		return nil, err
 	}
 	res := float64(width) / l.w()
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	bounds := image.Rect(0, 0, width, height)
+	ss, rs := shapes(rm, l)
+	// Check the strokes first: a refusal then costs no PDF render.
+	if err := checkWork(bounds, ss, rs, res); err != nil {
+		return nil, err
+	}
+	img := image.NewRGBA(bounds)
 	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
 	pdf, err := base.Render(int(PageWidth*res + 0.5))
 	if err != nil {
@@ -479,7 +534,6 @@ func renderPDF(rm *rmfile.Rm, base Base, width int) ([]byte, error) {
 	}
 	at := image.Pt(int(-l.minX*res+0.5), int(-l.minY*res+0.5))
 	draw.Draw(img, pdf.Bounds().Sub(pdf.Bounds().Min).Add(at), pdf, pdf.Bounds().Min, draw.Over)
-	ss, rs := shapes(rm, l)
 	rasterize(img, ss, rs, res)
 	return encodePNG(img)
 }

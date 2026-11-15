@@ -219,6 +219,36 @@ func must(b []byte, err error) []byte {
 	return b
 }
 
+// TestDrawingWork makes sure that a small file whose segments each cover
+// the full image gives ErrTooLarge and not a render of many minutes. A
+// smaller width needs less work and is correct.
+func TestDrawingWork(t *testing.T) {
+	var pts []rmtest.Point
+	for i := range 401 {
+		p := rmtest.Point{X: -700, Y: 0, W: 2}
+		if i%2 == 1 {
+			p = rmtest.Point{X: 700, Y: 20000, W: 2}
+		}
+		pts = append(pts, p)
+	}
+	for _, pen := range []rmfile.BrushType{rmfile.Fineliner, rmfile.Highlighter} {
+		var strokes []rmtest.Stroke
+		for i := 1; i < len(pts); i++ {
+			strokes = append(strokes, rmtest.Stroke{Pen: uint32(pen), Points: pts[i-1 : i+1]})
+		}
+		data := rmtest.File(strokes, nil)
+		if _, err := Render(data, nil, PNG, 2048); !errors.Is(err, ErrTooLarge) {
+			t.Errorf("pen %d with the width 2048: error %v, want ErrTooLarge", pen, err)
+		}
+		if _, err := Render(data, fakeBase{}, PNG, 2048); !errors.Is(err, ErrTooLarge) {
+			t.Errorf("pen %d on a PDF page with the width 2048: error %v, want ErrTooLarge", pen, err)
+		}
+		if _, err := Render(data, nil, PNG, 100); err != nil {
+			t.Errorf("pen %d with the width 100: %v", pen, err)
+		}
+	}
+}
+
 // TestBadCoordinates makes sure that coordinates far from the page give
 // ErrTooLarge and no large image, and that the renderer ignores
 // coordinates that are not finite.
