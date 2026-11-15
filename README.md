@@ -1,5 +1,8 @@
 # rmhub
 
+> [!WARNING]
+> This is LLM-ware. I'm playing around with some ideas. Use at your own risk.
+
 rmhub is a self-hosted alternative to the reMarkable cloud service.
 It syncs documents between reMarkable tablets and the desktop and mobile apps.
 You keep your notes on a server that you control.
