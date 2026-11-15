@@ -64,6 +64,7 @@ func newTestServer(t *testing.T) *testSrv {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.Render.CacheDir = filepath.Join(dir, "render")
 	admin := tokens.GenerateAdmin()
 	cfg.Admin.TokenFile = filepath.Join(dir, "admin")
 	if err := os.WriteFile(cfg.Admin.TokenFile, []byte(admin), 0o600); err != nil {

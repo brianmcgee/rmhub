@@ -49,6 +49,8 @@ type Library struct {
 	// Stop ends each open change feed when it closes, so that a server
 	// shutdown does not wait for the streams.
 	Stop <-chan struct{}
+	// Render renders pages for the render endpoint.
+	Render *Renderer
 }
 
 // Register adds the library endpoints and the change feed to the mux.
@@ -61,6 +63,7 @@ func (l *Library) Register(m *Mux) {
 	m.Handle("GET /api/v1/library/{id}/content", auth(l.content))
 	m.Handle("GET /api/v1/library/{id}/archive", auth(l.archive))
 	m.Handle("GET /api/v1/library/{id}/pages", auth(l.pages))
+	m.Handle("GET /api/v1/library/{id}/pages/{number}/render", auth(l.renderPage))
 	m.Handle("POST /api/v1/library/folders", auth(l.createFolder))
 	m.Handle("POST /api/v1/library/documents", auth(l.upload))
 	m.Handle("PATCH /api/v1/library/{id}", auth(l.patch))

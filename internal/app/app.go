@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/brianmcgee/rmhub/internal/accounts"
@@ -16,6 +17,7 @@ import (
 	"github.com/brianmcgee/rmhub/internal/libops"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/pairing"
+	"github.com/brianmcgee/rmhub/internal/rendercache"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/server"
 	"github.com/brianmcgee/rmhub/internal/tablet"
@@ -78,6 +80,10 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		TempDir:    stores.TempDir,
 		CheckFiles: cfg.Tablet.CheckFiles != "none",
 	}
+	cache, err := rendercache.New(cfg.Render.CacheDir, cfg.Render.CacheMaxBytes)
+	if err != nil {
+		return nil, fmt.Errorf("render.cache_dir: %w", err)
+	}
 	lib := library.New(a.Roots, stores.Blob)
 	a.API = &api.Service{Accounts: a.Accounts, Tokens: a.Tokens, Devices: a.Devices, Pairing: a.Pairing, Library: lib, Admin: admin, Log: log}
 	a.Library = &api.Library{
@@ -97,7 +103,12 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		MaxUpload: cfg.API.MaxUploadBytes,
 		TempDir:   stores.TempDir,
 		Stop:      ctx.Done(),
+		Render:    api.NewRenderer(cache, runtime.NumCPU(), log),
 	}
+	go func() {
+		<-ctx.Done()
+		_ = a.Library.Render.Close()
+	}()
 	go a.Hub.Run(ctx, a.Roots)
 	return a, nil
 }
