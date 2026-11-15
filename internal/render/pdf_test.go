@@ -59,6 +59,10 @@ func TestPDF(t *testing.T) {
 		t.Errorf("PDF only, no stroke: %v", got)
 	}
 
+	if n, err := p.PageCount(ctx, pdf); err != nil || n != 1 {
+		t.Errorf("page count: %d %v", n, err)
+	}
+
 	again := must(p.Render(ctx, pdf, 1, strokes, 1404))
 	if !bytes.Equal(out, again) {
 		t.Error("two renders differ")

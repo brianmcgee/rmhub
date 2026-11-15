@@ -37,6 +37,25 @@ func NewPDF(ctx context.Context, n int) (*PDF, error) {
 // Close stops the pool.
 func (p *PDF) Close() error { return p.pool.Close() }
 
+// PageCount returns the number of pages of the PDF file data.
+func (p *PDF) PageCount(ctx context.Context, data []byte) (int, error) {
+	inst, err := p.pool.GetInstanceWithContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = inst.Close() }()
+	doc, err := inst.OpenDocument(&requests.OpenDocument{File: &data})
+	if err != nil {
+		return 0, fmt.Errorf("open the PDF: %w", err)
+	}
+	defer func() { _, _ = inst.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: doc.Document}) }()
+	n, err := inst.FPDF_GetPageCount(&requests.FPDF_GetPageCount{Document: doc.Document})
+	if err != nil {
+		return 0, err
+	}
+	return n.PageCount, nil
+}
+
 // Render draws the page pdfPage (from 1) of the PDF file data with the
 // strokes of the .rm file rm (or nil) on top, as PNG. The document stays
 // open only during the call.

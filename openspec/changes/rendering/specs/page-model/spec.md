@@ -28,6 +28,17 @@ from `redirectionPageMap` at the same position, if the value is 0 or more.
 - **WHEN** rmhub builds the page list
 - **THEN** the list has `a` as page 1 and `b` as page 2
 
+### Requirement: PDF without page list
+When the page list of a PDF document is empty, the page list MUST have
+one page for each page of the PDF. The page number and `pdfPage` MUST be
+the PDF page. `id` MUST be empty and `rmHash` MUST be `null`. A PDF that
+the API uploaded has no page list until a tablet opens it.
+
+#### Scenario: Uploaded PDF
+- **GIVEN** the API uploaded a PDF with 3 pages, and no tablet opened it
+- **WHEN** rmhub builds the page list
+- **THEN** the list has 3 pages, and page 2 has `"pdfPage":2`
+
 ### Requirement: Page fields
 Each page MUST have `number`, `id`, `pdfPage` and `rmHash`. `pdfPage` MUST
 be the 1-based PDF page from `redir.value` + 1, or `null`. `rmHash` MUST be

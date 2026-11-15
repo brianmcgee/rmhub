@@ -335,7 +335,38 @@ func (l *Library) pageList(ctx context.Context, account string, d *library.Doc) 
 			}
 		}
 	}
-	return pages.List(d.ID, raw, d.Files)
+	ps, err := pages.List(d.ID, raw, d.Files)
+	if err != nil || len(ps) > 0 || d.Type != library.TypePDF {
+		return ps, err
+	}
+	return l.pdfPages(ctx, account, d)
+}
+
+// pdfPages returns one page for each page of the PDF of a document whose
+// .content has no page list. A PDF that the API uploaded has no page list
+// until a tablet opens it. These pages have no ID and no .rm file.
+func (l *Library) pdfPages(ctx context.Context, account string, d *library.Doc) ([]pages.Page, error) {
+	f, ok := d.File(".pdf")
+	if !ok {
+		return []pages.Page{}, nil
+	}
+	data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := l.Render.pdfPool()
+	if err != nil {
+		return nil, err
+	}
+	n, err := pool.PageCount(ctx, data)
+	if err != nil {
+		return nil, fmt.Errorf("count the pages of the PDF of document %s: %w", d.ID, err)
+	}
+	ps := make([]pages.Page, n)
+	for i := range ps {
+		ps[i] = pages.Page{Number: i + 1, PDFPage: new(i + 1)}
+	}
+	return ps, nil
 }
 
 func mustNS(account string) blob.Namespace {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/brianmcgee/rmhub/internal/library/libtest"
+	"github.com/brianmcgee/rmhub/internal/pages"
 	"github.com/brianmcgee/rmhub/internal/render/rendertest"
 	"github.com/brianmcgee/rmhub/internal/rmfile"
 	"github.com/brianmcgee/rmhub/internal/rmfile/rmtest"
@@ -55,6 +56,7 @@ func TestRenderEndpoint(t *testing.T) {
 	}, map[string][]byte{".pdf": rendertest.PDF(), "/pa.rm": strokePage(1000)})
 	tr.Put("book", libtest.Meta("Book", "DocumentType", ""), map[string]any{"fileType": "epub", "pageCount": float64(1)}, map[string][]byte{".epub": []byte("PK epub")})
 	tr.PDF("private", "Private", "", rendertest.PDF())
+	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
 	tr.Commit(4)
 	base := "/api/v1/library/"
 
@@ -95,6 +97,16 @@ func TestRenderEndpoint(t *testing.T) {
 	}
 	if w, h := pngSize(t, r.body); w != 702 || h != 908 {
 		t.Fatalf("PDF page size %d × %d", w, h)
+	}
+	// A PDF without a page list has the pages of the PDF.
+	r = e.req("GET", base+"plain/pages", owner, nil)
+	var pl struct{ Pages []pages.Page }
+	r.json(t, &pl)
+	if len(pl.Pages) != 1 || pl.Pages[0].PDFPage == nil || *pl.Pages[0].PDFPage != 1 || pl.Pages[0].RMHash != nil {
+		t.Fatalf("pages of an uploaded PDF: %s", r.body)
+	}
+	if r := e.req("GET", base+"plain/pages/1/render", owner, nil); r.status != 200 {
+		t.Fatalf("page of an uploaded PDF: %d %s", r.status, r.body)
 	}
 	if r := e.req("GET", base+"annot/pages/2/render", owner, nil); r.status != 200 {
 		t.Fatalf("inserted page: %d %s", r.status, r.body)
