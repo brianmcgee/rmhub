@@ -206,6 +206,8 @@ token = "rmh_…"
 | `rmhub account set-schema <3\|4>` | Set the root index schema that the server announces to the tablets. |
 | `rmhub ls [entry]`, `rmhub stat <entry>`, `rmhub find <text>` | Read the library. |
 | `rmhub get <entry> [-o <file>] [--archive]` | Download a PDF, an EPUB or the archive of a document. |
+| `rmhub pages <entry>` | List the pages of a document. |
+| `rmhub render <entry> --page <n> [--format png\|svg] [--width <px>] [-o <file>]` | Render a page of a notebook or a PDF as an image. |
 | `rmhub upload <file> [--to <entry>] [--name <name>]` | Upload a PDF or an EPUB. |
 | `rmhub mkdir`, `rmhub mv`, `rmhub rename`, `rmhub trash` | Change the library. Each change gets to the tablets at their next sync. |
 | `rmhub watch [--after <generation>]` | Print the changes of the library, one JSON line for each generation. |

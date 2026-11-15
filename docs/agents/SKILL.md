@@ -1,6 +1,6 @@
 ---
 name: rmhub
-description: Read and change the documents of a reMarkable library on an rmhub server with the rmhub command. Use it to list, find, download, upload, move, rename and trash documents and folders, and to follow changes.
+description: Read and change the documents of a reMarkable library on an rmhub server with the rmhub command. Use it to list, find, download, upload, move, rename and trash documents and folders, to render pages as images, and to follow changes.
 ---
 
 # rmhub library for agents
@@ -120,6 +120,28 @@ an EPUB. A notebook has no source file; it gives exit code 4. With
 document, also for a notebook.
 
 Output: `{"id":"…","file":"Paper.pdf","size":12345}`.
+
+### Read the handwriting of a page
+
+```sh
+rmhub pages /Agent/Notes --json                     # the page numbers
+rmhub render /Agent/Notes --page 3 -o page.png --json
+rmhub render /Agent/Notes --page 1 --format svg     # writes Notes-p1.svg
+rmhub render /Agent/Paper --page 2 -o -             # writes the PNG to standard output
+```
+
+`pages` gives a JSON array of `{"number":1,"id":"…","pdfPage":1,"rmHash":"…"}`.
+`pdfPage` is null for a page without PDF, and `rmHash` is null for a
+page without strokes.
+
+`render` draws the strokes of a page, and on a PDF page also the PDF.
+Look at the image to read handwriting. The default format is PNG and the
+default width is 1404 pixels (from 100 to 4096). A PDF page is
+available only as PNG; SVG gives exit code 1. An EPUB page or a page
+number out of range gives exit code 4. Without `-o`, the file is
+`<name>-p<number>.<format>`. The command never replaces a file.
+
+Output: `{"id":"…","page":3,"file":"page.png","size":12345}`.
 
 ### Upload a document
 

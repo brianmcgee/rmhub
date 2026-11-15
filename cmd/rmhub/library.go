@@ -126,6 +126,7 @@ func (c *cli) libraryCmds() []*cobra.Command {
 	return []*cobra.Command{
 		c.lsCmd(), c.statCmd(), c.findCmd(), c.getCmd(), c.uploadCmd(),
 		c.mkdirCmd(), c.mvCmd(), c.renameCmd(), c.trashCmd(), c.watchCmd(),
+		c.pagesCmd(), c.renderCmd(),
 	}
 }
 
