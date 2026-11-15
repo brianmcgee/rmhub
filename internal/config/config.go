@@ -24,7 +24,17 @@ type Config struct {
 	Listen  ListenConfig `toml:"listen"`
 	Admin   AdminConfig  `toml:"admin"`
 	Tablet  TabletConfig `toml:"tablet"`
+	API     APIConfig    `toml:"api"`
 }
+
+// APIConfig has the settings of the rmhub API.
+type APIConfig struct {
+	// MaxUploadBytes is the maximum size of a document upload.
+	MaxUploadBytes int64 `toml:"max_upload_bytes"`
+}
+
+// DefaultMaxUploadBytes is the default of api.max_upload_bytes (256 MiB).
+const DefaultMaxUploadBytes = 256 << 20
 
 // TabletConfig has the settings of the tablet protocol.
 type TabletConfig struct {
@@ -159,6 +169,9 @@ func (c *Config) setDefaults() {
 	if c.Tablet.AnnouncedHost == "" {
 		c.Tablet.AnnouncedHost = "local.appspot.com"
 	}
+	if c.API.MaxUploadBytes == 0 {
+		c.API.MaxUploadBytes = DefaultMaxUploadBytes
+	}
 	if c.Tablet.CheckFiles == "" {
 		c.Tablet.CheckFiles = "truthful"
 	}
@@ -198,6 +211,9 @@ func (c *Config) validate() error {
 	}
 	if err := checkHost(c.Tablet.AnnouncedHost); err != nil {
 		return fmt.Errorf("tablet.announced_host: %w", err)
+	}
+	if c.API.MaxUploadBytes < 0 {
+		return fmt.Errorf("api.max_upload_bytes: the value must be positive")
 	}
 	if c.Tablet.CheckFiles != "truthful" && c.Tablet.CheckFiles != "none" {
 		return fmt.Errorf("tablet.check_files: unknown value %q (use truthful or none)", c.Tablet.CheckFiles)

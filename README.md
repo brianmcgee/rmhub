@@ -7,8 +7,9 @@ You keep your notes on a server that you control.
 ## Status
 
 Early development. The server has accounts, API tokens, tablet pairing
-and Sync 1.5 for tablets, with change notifications. It does not render
-documents yet.
+and Sync 1.5 for tablets, with change notifications. It has a library
+API with scoped tokens and a change feed for scripts and agents. It does
+not render documents yet.
 
 ## Run the server
 
@@ -48,6 +49,7 @@ conditional write. A backend that accepts the write stops the server.
 | `admin.token_file` | | File with the admin token. Without it, each admin request gets status 401. |
 | `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
 | `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
+| `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
@@ -198,14 +200,40 @@ token = "rmh_…"
 | `rmhub account` | Show the account of the token. |
 | `rmhub pair` | Make a pairing code. |
 | `rmhub devices list`, `rmhub devices remove <id>` | List or remove paired devices. |
-| `rmhub tokens list`, `rmhub tokens create`, `rmhub tokens revoke <id>` | Manage the owner tokens. |
+| `rmhub tokens list`, `rmhub tokens create [--grant <entry>:<read\|write>]`, `rmhub tokens revoke <id>` | Manage owner tokens and scoped tokens. |
 | `rmhub account set-schema <3\|4>` | Set the root index schema that the server announces to the tablets. |
+| `rmhub ls [entry]`, `rmhub stat <entry>`, `rmhub find <text>` | Read the library. |
+| `rmhub get <entry> [-o <file>] [--archive]` | Download a PDF, an EPUB or the archive of a document. |
+| `rmhub upload <file> [--to <entry>] [--name <name>]` | Upload a PDF or an EPUB. |
+| `rmhub mkdir`, `rmhub mv`, `rmhub rename`, `rmhub trash` | Change the library. Each change gets to the tablets at their next sync. |
+| `rmhub watch [--after <generation>]` | Print the changes of the library, one JSON line for each generation. |
 
 Each command prints text by default and one JSON value with `--json`.
 Errors go to standard error. The exit codes are: 0 success, 1 unexpected
 error, 2 usage or setting error, 3 status 401 or 403, 4 status 404, 5
 status 409 or 412. `rmhub <command> --help` shows the options, the JSON
 output form and an example.
+
+### Library and agents
+
+An `<entry>` argument is an ID or a path. A path starts with `/`, for
+example `/Work/Paper`. Two entries can have the same path; then the
+command exits with code 5 and prints the IDs. Use the ID after that.
+
+A scoped token gives a program or an AI agent access to some folders
+only:
+
+```sh
+rmhub tokens create --label agent --grant /Agent:write --grant /Reference:read --expires 720h
+```
+
+The token sees only the grant folders and their descendants. It cannot
+pair tablets, remove devices or change the account. It can create
+tokens with the same or fewer rights, and revoke them. Revocation of a
+token also revokes each token that it created.
+
+`docs/agents/SKILL.md` is a guide for AI agents. Give it to an agent
+together with a scoped token.
 
 ## Development
 

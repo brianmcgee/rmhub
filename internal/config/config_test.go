@@ -118,6 +118,7 @@ func TestErrors(t *testing.T) {
 		{"host with scheme", "[tablet]\nannounced_host = \"https://rmhub.example.org\"\n", "tablet.announced_host"},
 		{"host with path", "[tablet]\nannounced_host = \"rmhub.example.org/x\"\n", "tablet.announced_host"},
 		{"bad check_files", "[tablet]\ncheck_files = \"some\"\n", "tablet.check_files"},
+		{"negative upload limit", "[api]\nmax_upload_bytes = -1\n", "api.max_upload_bytes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := config.Parse(tc.text)

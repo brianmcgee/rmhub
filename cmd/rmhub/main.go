@@ -86,6 +86,7 @@ Exit codes: 0 success, 1 unexpected error, 2 usage or setting error,
 		return &exitError{code: exitUsage, err: err}
 	})
 	root.AddCommand(c.serveCmd(), c.versionCmd(), c.adminCmd(), c.accountCmd(), c.pairCmd(), c.devicesCmd(), c.tokensCmd())
+	root.AddCommand(c.libraryCmds()...)
 	return root
 }
 

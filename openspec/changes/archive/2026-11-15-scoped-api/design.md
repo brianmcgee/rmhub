@@ -144,3 +144,102 @@ writable for that token, so a scoped client cannot move its own root.
 - [Feed replay from an old generation is slow] → Each step reuses the
   entries of the previous snapshot. The cost grows with the number of
   changed documents, not the library size.
+
+## Implementation notes
+
+These are the decisions that the implementation made without a question
+to the owner. Review them.
+
+### Tokens
+
+- Revocation deletes the records of the token and of its descendants. It
+  does not mark them. The chain check fails when a parent is missing, so
+  a crash between two deletes does not leave a valid child.
+- The field `parent` is the token ID of the creator. An owner token has
+  no parent. The admin endpoint issues only owner tokens. It does not
+  accept grants.
+- A child token without `expiresAt` gets the expiry of its parent. A
+  later expiry gives status 403. A scoped token that creates a token
+  without grants gets status 403.
+- For a scoped creator, the narrowing check (403) comes before the
+  folder check (400). Thus an unknown folder gives 403 to a scoped
+  creator and 400 to an owner. An access value other than `read` or
+  `write` gives 400.
+- A scoped token gets 403 on `GET` and `PATCH /api/v1/account`, on the
+  device endpoints, on pairing codes and on the admin endpoints.
+- The server reads the token records on each request. The 30-second
+  token cache of the design is not implemented, because the reads are
+  fast and the cache delays revocation.
+
+### Library
+
+- For a scoped token, a grant folder has `parent: ""`, and paths start
+  at the grant folder. A scoped token cannot list the trash. A write
+  response after `trash` has no path for a scoped token.
+- Resolve: for an owner, the first segment `trash` is the trash. The path
+  `/` or an empty path gives 400. Two entries with the path give 409 with
+  their IDs in the message.
+- `modified` comes from `lastModified` (milliseconds). Without it,
+  `modified` is `null`.
+- `pageCount` comes from `pageCount` in `.content`. Without it, it is the
+  length of `pages`, else the number of `cPages.pages` that are not
+  deleted.
+- Type: `CollectionType` is `folder`. The `fileType` `pdf` and `epub` give
+  `pdf` and `epub`. Each other document is `notebook`.
+- A document with a missing or bad index, `.metadata` or `.content` is
+  not visible. It stays in the root index, so a write does not remove it.
+- The new package `internal/lru` replaces the root cache of sync15. The
+  snapshot builder uses it for parsed metadata.
+- The archive endpoint checks that each file exists before it sends the
+  first byte, so a missing blob gives 404 and not a cut ZIP file.
+
+### Writes
+
+- Upload: the media type must be `application/pdf` or
+  `application/epub+zip`, else 400. The query `name` is necessary. The
+  server writes the body to a temporary file while it calculates the
+  hash. A body above `api.max_upload_bytes` gives 400. The server stores
+  the source blob before the operation loop, so a retry does not upload
+  it again.
+- The new `.content` uses the defaults of rmapi `createZipContent`
+  (margins 180, lineHeight -1, textScale 1, orientation portrait,
+  pageCount 0). New `.metadata` has version 0 and `synced: true`.
+- A scoped token cannot create an entry at the top level or move an
+  entry to the top level (403). A move into `trash` gives 400; use the
+  trash endpoint. A name must not be empty or contain `/`. A `PATCH`
+  without `name` and `parent` gives 400.
+
+### Change feed
+
+- The feed stops on server shutdown through the server context, so a
+  shutdown does not wait for open streams. It checks the token every 30
+  seconds; the tests use 50 milliseconds.
+- Operations: `created` when an entry becomes visible, `trashed` when
+  `trashed` changes from false to true, `moved` when the parent changes,
+  `updated` when the hash or `trashed` changes otherwise, `removed` when
+  the entry is no longer visible. Because a scoped token cannot see the
+  trash, a trashed entry gives `removed` to a scoped token.
+
+### CLI
+
+- `/` as an entry argument is the top level. It is valid for `ls` and as
+  the target of `mv`.
+- `get` writes to a temporary file and then makes a hard link to the
+  target name. The link fails when the file exists, so `get` never
+  replaces a file, also when the file appears during the download.
+- A server answer with status 400 gives exit code 1, as in the
+  foundation exit code contract. The usage code 2 is for errors that the
+  client finds, such as an unknown upload extension.
+- `watch` waits 1 second after the first lost connection, and doubles the
+  wait up to 30 seconds. A status below 500 (for example 401 after a
+  revocation) ends the command. `watch` prints the same JSON lines with
+  and without `--json`.
+- `tokens create --grant` resolves a path to an ID before it sends the
+  request.
+
+### Verification
+
+- The rmapi conformance check uploads a PDF through the CLI and checks
+  that rmapi lists, downloads and moves it (task 2.6).
+- Task 5.5: each command of `docs/agents/SKILL.md` ran against a local
+  server with a scoped token with a write grant.

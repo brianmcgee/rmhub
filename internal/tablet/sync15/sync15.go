@@ -26,6 +26,7 @@ import (
 	"github.com/brianmcgee/rmhub/internal/accounts"
 	"github.com/brianmcgee/rmhub/internal/blob"
 	"github.com/brianmcgee/rmhub/internal/hashtree"
+	"github.com/brianmcgee/rmhub/internal/lru"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/tablet"
 )
@@ -70,7 +71,7 @@ type Service struct {
 	CheckFiles bool
 
 	cacheOnce sync.Once
-	cache     *rootCache
+	cache     *lru.Cache[string, *hashtree.Index]
 }
 
 // Register adds the endpoints to the mux. requireUser checks the user
@@ -228,8 +229,10 @@ func (s *Service) putRoot(w http.ResponseWriter, r *http.Request, u tablet.User,
 	return nil
 }
 
-func (s *Service) roots() *rootCache {
-	s.cacheOnce.Do(func() { s.cache = newRootCache(64) })
+// roots returns the LRU cache of parsed root indexes. A blob never
+// changes, so an entry never goes stale.
+func (s *Service) roots() *lru.Cache[string, *hashtree.Index] {
+	s.cacheOnce.Do(func() { s.cache = lru.New[string, *hashtree.Index](64) })
 	return s.cache
 }
 
@@ -250,7 +253,7 @@ func (s *Service) readAll(ctx context.Context, ns blob.Namespace, hash string, l
 // loadRoot reads and parses the root index of the hash.
 func (s *Service) loadRoot(ctx context.Context, ns blob.Namespace, hash string) (*hashtree.Index, error) {
 	key := ns.String() + "/" + hash
-	if ix, ok := s.roots().get(key); ok {
+	if ix, ok := s.roots().Get(key); ok {
 		return ix, nil
 	}
 	raw, err := s.readAll(ctx, ns, hash, maxRoot)
@@ -267,7 +270,7 @@ func (s *Service) loadRoot(ctx context.Context, ns blob.Namespace, hash string) 
 	if !ix.MatchesRoot(raw, hash) {
 		return nil, badRequest("root %s is not a root index with this hash", hash)
 	}
-	s.roots().put(key, ix)
+	s.roots().Put(key, ix)
 	return ix, nil
 }
 

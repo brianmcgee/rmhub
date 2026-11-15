@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,17 +20,37 @@ type userView struct {
 }
 
 type tokenView struct {
-	ID        string     `json:"id"`
-	Label     string     `json:"label"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ExpiresAt *time.Time `json:"expiresAt"`
+	ID        string      `json:"id"`
+	Label     string      `json:"label"`
+	CreatedAt time.Time   `json:"createdAt"`
+	ExpiresAt *time.Time  `json:"expiresAt"`
+	Parent    string      `json:"parent,omitempty"`
+	Grants    []grantView `json:"grants,omitempty"`
+}
+
+type grantView struct {
+	Folder string `json:"folder"`
+	Access string `json:"access"`
 }
 
 type issuedView struct {
-	ID        string     `json:"id"`
-	Token     string     `json:"token"`
-	Label     string     `json:"label"`
-	ExpiresAt *time.Time `json:"expiresAt"`
+	ID        string      `json:"id"`
+	Token     string      `json:"token"`
+	Label     string      `json:"label"`
+	ExpiresAt *time.Time  `json:"expiresAt"`
+	Parent    string      `json:"parent,omitempty"`
+	Grants    []grantView `json:"grants,omitempty"`
+}
+
+func grantsText(gs []grantView) string {
+	if len(gs) == 0 {
+		return "owner"
+	}
+	parts := make([]string, len(gs))
+	for i, g := range gs {
+		parts[i] = g.Folder + ":" + g.Access
+	}
+	return strings.Join(parts, ",")
 }
 
 type deviceView struct {
@@ -324,9 +345,12 @@ func (c *cli) tokensCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List the tokens of the account",
 		Long: `List the API tokens of the account. The list does not contain the token
-secrets.
+secrets. With a scoped token, the list has only the tokens that the
+token created, and their descendants.
 
-JSON output: [{"id":"…","label":"…","createdAt":"…","expiresAt":…}, …]`,
+JSON output: [{"id":"…","label":"…","createdAt":"…","expiresAt":…,
+"parent":"…","grants":[{"folder":"…","access":"read"}]}, …]
+A token without grants is an owner token. It has no parent and no grants.`,
 		Example: "  rmhub tokens list",
 		Args:    noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -339,27 +363,37 @@ JSON output: [{"id":"…","label":"…","createdAt":"…","expiresAt":…}, …]
 				return err
 			}
 			return c.output(ts, func(w io.Writer) {
-				_, _ = fmt.Fprintln(w, "ID\tLABEL\tCREATED\tEXPIRES")
+				_, _ = fmt.Fprintln(w, "ID\tLABEL\tCREATED\tEXPIRES\tGRANTS")
 				for _, t := range ts {
-					_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID, t.Label, t.CreatedAt.UTC().Format(time.RFC3339), expiresText(t.ExpiresAt))
+					_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", t.ID, t.Label, t.CreatedAt.UTC().Format(time.RFC3339), expiresText(t.ExpiresAt), grantsText(t.Grants))
 				}
 			})
 		},
 	}
 	var label, expires string
+	var grantArgs []string
 	create := &cobra.Command{
-		Use:   "create [--label <label>] [--expires <time>]",
-		Short: "Create an owner token for the account",
-		Long: `Create an owner token for the account of the current token. The command
-prints the token on standard output. The server does not keep the token
-text, so store it now.
+		Use:   "create [--label <label>] [--expires <time>] [--grant <entry>:<read|write>]...",
+		Short: "Create an owner token or a scoped token",
+		Long: `Create a token for the account of the current token. The command prints
+the token on standard output. The server does not keep the token text,
+so store it now.
+
+Without --grant, the command creates an owner token. With one or more
+--grant options, it creates a scoped token. A scoped token sees only the
+grant folders and their descendants. <entry> is a folder ID or a path
+that starts with /. A scoped token can create only a scoped token with
+the same or fewer rights.
 
 --expires takes an RFC 3339 time or a duration from now, such as 720h.
-Without --expires, the token does not expire.
+Without --expires, an owner token does not expire, and a scoped token
+created by a scoped token gets the expiry of its creator.
 
-JSON output: {"id":"…","token":"…","label":"…","expiresAt":…}`,
-		Example: "  rmhub tokens create --label backup-script --expires 720h",
-		Args:    noArgs,
+JSON output: {"id":"…","token":"…","label":"…","expiresAt":…,
+"parent":"…","grants":[{"folder":"…","access":"write"}]}`,
+		Example: `  rmhub tokens create --label backup-script --expires 720h
+  rmhub tokens create --label agent --grant /Agent:write --grant /Reference:read`,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			exp, err := parseExpires(expires, time.Now())
 			if err != nil {
@@ -369,8 +403,24 @@ JSON output: {"id":"…","token":"…","label":"…","expiresAt":…}`,
 			if err != nil {
 				return err
 			}
+			body := map[string]any{"label": label, "expiresAt": exp}
+			if len(grantArgs) > 0 {
+				var gs []grantView
+				for _, g := range grantArgs {
+					i := strings.LastIndex(g, ":")
+					if i <= 0 || (g[i+1:] != "read" && g[i+1:] != "write") {
+						return usageErr("--grant %q: use <entry>:read or <entry>:write", g)
+					}
+					id, err := cl.entryID(cmd.Context(), g[:i])
+					if err != nil {
+						return err
+					}
+					gs = append(gs, grantView{Folder: id, Access: g[i+1:]})
+				}
+				body["grants"] = gs
+			}
 			var t issuedView
-			if _, err := cl.do(cmd.Context(), "POST", "/api/v1/account/tokens", map[string]any{"label": label, "expiresAt": exp}, &t); err != nil {
+			if _, err := cl.do(cmd.Context(), "POST", "/api/v1/account/tokens", body, &t); err != nil {
 				return err
 			}
 			return c.printIssued(t)
@@ -378,11 +428,13 @@ JSON output: {"id":"…","token":"…","label":"…","expiresAt":…}`,
 	}
 	create.Flags().StringVar(&label, "label", "", "label that names the token")
 	create.Flags().StringVar(&expires, "expires", "", "expiry time (RFC 3339) or duration from now")
+	create.Flags().StringArrayVar(&grantArgs, "grant", nil, "grant <entry>:<read|write> for a scoped token (repeatable)")
 	revoke := &cobra.Command{
 		Use:   "revoke <id>",
 		Short: "Revoke a token",
-		Long: `Revoke the token with the ID <id>. The next request with the token gets
-status 401.
+		Long: `Revoke the token with the ID <id> and each token that it created, with
+their descendants. The next request with one of these tokens gets status
+401. A scoped token can revoke only its descendants.
 
 JSON output: {"id":"…","revoked":true}`,
 		Example: "  rmhub tokens revoke abcdefghijklmnop",
