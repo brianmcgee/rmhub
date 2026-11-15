@@ -57,6 +57,13 @@ func TestRenderEndpoint(t *testing.T) {
 	tr.Put("book", libtest.Meta("Book", "DocumentType", ""), map[string]any{"fileType": "epub", "pageCount": float64(1)}, map[string][]byte{".epub": []byte("PK epub")})
 	tr.PDF("private", "Private", "", rendertest.PDF())
 	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
+	onePage := map[string]any{"fileType": "notebook", "cPages": map[string]any{"pages": []any{
+		map[string]any{"id": "pa", "idx": map[string]any{"value": "a"}},
+	}}}
+	tr.Put("long", libtest.Meta("Long", "DocumentType", ""), onePage, map[string][]byte{"/pa.rm": strokePage(30000)})
+	// A v5 file that gives 2^32 - 16 layers.
+	bomb := append([]byte(rmfile.HeaderV5), 0xf0, 0xff, 0xff, 0xff)
+	tr.Put("bomb", libtest.Meta("Bomb", "DocumentType", ""), onePage, map[string][]byte{"/pa.rm": bomb})
 	tr.Commit(4)
 	base := "/api/v1/library/"
 
@@ -124,6 +131,8 @@ func TestRenderEndpoint(t *testing.T) {
 		{"width too large", "nb/pages/1/render?width=4097", 400},
 		{"unknown format", "nb/pages/1/render?format=jpeg", 400},
 		{"SVG of a PDF page", "annot/pages/1/render?format=svg", 400},
+		{"too many pixels", "long/pages/1/render?width=4096", 400},
+		{"page file with a bad count", "bomb/pages/1/render", 500},
 	} {
 		if r := e.req("GET", base+tc.path, owner, nil); r.status != tc.status {
 			t.Errorf("%s: %d %s", tc.name, r.status, r.body)
@@ -136,5 +145,42 @@ func TestRenderEndpoint(t *testing.T) {
 	}
 	if r := e.req("GET", base+"nb/pages/1/render", tok, nil); r.status != 200 {
 		t.Fatalf("scoped render: %d", r.status)
+	}
+}
+
+// TestPDFPageCountIsCached makes sure that the page list of a PDF
+// without a page list starts PDFium one time for each PDF.
+func TestPDFPageCountIsCached(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
+	tr.Commit(4)
+
+	rn := e.app.Library.Render
+	first := e.req("GET", "/api/v1/library/plain/pages", owner, nil)
+	if first.status != 200 || rn.Renders.Load() != 1 {
+		t.Fatalf("first page list: status %d, %d PDFium runs, want 200 and 1", first.status, rn.Renders.Load())
+	}
+	again := e.req("GET", "/api/v1/library/plain/pages", owner, nil)
+	if again.status != 200 || !bytes.Equal(again.body, first.body) || rn.Renders.Load() != 1 {
+		t.Fatalf("second page list: status %d, %d PDFium runs, want 200 and 1\n%s", again.status, rn.Renders.Load(), again.body)
+	}
+}
+
+// TestRenderAfterClose makes sure that a PDF request after the renderer
+// stops gives an error and no panic.
+func TestRenderAfterClose(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
+	tr.Commit(4)
+
+	if err := e.app.Library.Render.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.req("GET", "/api/v1/library/plain/pages", owner, nil); r.status != 500 {
+		t.Fatalf("page list after close: %d %s", r.status, r.body)
 	}
 }

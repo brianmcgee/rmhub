@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -22,6 +23,8 @@ import (
 	"github.com/brianmcgee/rmhub/internal/libops"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/pages"
+	"github.com/brianmcgee/rmhub/internal/render"
+	"github.com/brianmcgee/rmhub/internal/rendercache"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
@@ -344,23 +347,36 @@ func (l *Library) pageList(ctx context.Context, account string, d *library.Doc) 
 
 // pdfPages returns one page for each page of the PDF of a document whose
 // .content has no page list. A PDF that the API uploaded has no page list
-// until a tablet opens it. These pages have no ID and no .rm file.
+// until a tablet opens it. These pages have no ID and no .rm file. The
+// count goes through the renderer, so it obeys the render limit and the
+// cache keeps it for each PDF.
 func (l *Library) pdfPages(ctx context.Context, account string, d *library.Doc) ([]pages.Page, error) {
 	f, ok := d.File(".pdf")
 	if !ok {
 		return []pages.Page{}, nil
 	}
-	data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
-	if err != nil {
-		return nil, err
-	}
-	pool, err := l.Render.pdfPool()
-	if err != nil {
-		return nil, err
-	}
-	n, err := pool.PageCount(ctx, data)
+	key := rendercache.Key(account, strconv.Itoa(render.Version), "pagecount", f.Hash)
+	b, err := l.Render.image(ctx, key, func(ctx context.Context) ([]byte, error) {
+		data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		pool, err := l.Render.pdfPool()
+		if err != nil {
+			return nil, err
+		}
+		n, err := pool.PageCount(ctx, data)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(strconv.Itoa(n)), nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("count the pages of the PDF of document %s: %w", d.ID, err)
+	}
+	n, err := strconv.Atoi(string(b))
+	if err != nil || n < 0 {
+		return nil, fmt.Errorf("the cached page count of the PDF of document %s is not a number", d.ID)
 	}
 	ps := make([]pages.Page, n)
 	for i := range ps {
@@ -400,6 +416,11 @@ func (l *Library) archive(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	for _, f := range d.Files {
+		// The names come from a tablet. A name such as ../x would make
+		// an unsafe ZIP file for a client that extracts it.
+		if !fs.ValidPath(f.Name) || f.Name == "." || strings.Contains(f.Name, `\`) {
+			return Errorf(CodeConflict, "the file name %q of entry %s is not a safe path for an archive", f.Name, d.ID)
+		}
 		if !have[f.Hash] {
 			return Errorf(CodeNotFound, "the file %s of entry %s is not in the blob store", f.Name, d.ID)
 		}
@@ -437,13 +458,7 @@ func (l *Library) copyToZip(r *http.Request, zw *zip.Writer, ns blob.Namespace, 
 
 // run does a write operation and answers with the entry.
 func (l *Library) run(w http.ResponseWriter, r *http.Request, status int, op libops.Op) error {
-	p := PrincipalFrom(r.Context())
-	req := libops.Request{
-		Account: p.Account,
-		Source:  rootlog.Source{Type: rootlog.SourceToken, ID: p.TokenID},
-		Scope:   grants.FromChain(p.Chain),
-		IfMatch: ifMatch(r),
-	}
+	req := opRequest(r)
 	s, id, err := l.Ops.Run(r.Context(), req, op)
 	if err != nil {
 		return opError(err)
@@ -459,6 +474,17 @@ func (l *Library) run(w http.ResponseWriter, r *http.Request, status int, op lib
 	// has no path.
 	WriteJSON(w, status, v.entry(d, v.visible(id)))
 	return nil
+}
+
+// opRequest returns the write request of the principal of r.
+func opRequest(r *http.Request) libops.Request {
+	p := PrincipalFrom(r.Context())
+	return libops.Request{
+		Account: p.Account,
+		Source:  rootlog.Source{Type: rootlog.SourceToken, ID: p.TokenID},
+		Scope:   grants.FromChain(p.Chain),
+		IfMatch: ifMatch(r),
+	}
 }
 
 // ifMatch returns the hash of the If-Match header without quotes.
@@ -534,6 +560,11 @@ func (l *Library) upload(w http.ResponseWriter, r *http.Request) error {
 	}
 	if r.ContentLength > l.MaxUpload {
 		return Errorf(CodeBadRequest, "the body is larger than %d bytes (api.max_upload_bytes)", l.MaxUpload)
+	}
+	// Check the access before the body goes to the blob store, so that a
+	// token without write access cannot fill the store.
+	if err := l.Ops.CheckNew(r.Context(), opRequest(r), q.Get("parent"), name); err != nil {
+		return opError(err)
 	}
 
 	f, err := os.CreateTemp(l.TempDir, "upload-*")

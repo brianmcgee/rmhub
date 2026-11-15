@@ -1,9 +1,15 @@
 package rmfile
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
+	"runtime"
+	"slices"
 	"testing"
+
+	"github.com/brianmcgee/rmhub/internal/rmfile/rmtest"
 )
 
 func testUnmarshalBinary(t *testing.T, fn string, ver Version) *Rm {
@@ -93,5 +99,59 @@ func TestBrushColorPenColorEnum(t *testing.T) {
 		if uint32(c.got) != c.want {
 			t.Errorf("%s: got %d, want %d", name, c.got, c.want)
 		}
+	}
+}
+
+// allocated returns the number of bytes that f allocates.
+func allocated(f func()) uint64 {
+	var a, b runtime.MemStats
+	runtime.ReadMemStats(&a)
+	f()
+	runtime.ReadMemStats(&b)
+	return b.TotalAlloc - a.TotalAlloc
+}
+
+// TestCountLargerThanFile makes sure that a count in the file that is
+// larger than the file gives an error and no large allocation.
+func TestCountLargerThanFile(t *testing.T) {
+	le := binary.LittleEndian
+	huge := le.AppendUint32(nil, 0xfffffff0)
+	one := le.AppendUint32(nil, 1)
+	lineV5 := make([]byte, 20) // brush type, color, padding, size, unknown
+
+	v6Points := rmtest.File([]rmtest.Stroke{{Points: []rmtest.Point{{X: 1, Y: 1, W: 3}}}}, nil)
+	at := bytes.Index(v6Points, []byte{0x5c, 14, 0, 0, 0})
+	if at < 0 {
+		t.Fatal("the points subblock is not in the test file")
+	}
+	copy(v6Points[at+1:], huge)
+
+	v6Rects := rmtest.File(nil, []rmtest.Glyph{{Rects: make([]rmtest.Rect, 200)}})
+	at = bytes.LastIndex(v6Rects, []byte{0xc8, 0x01})
+	if at < 0 {
+		t.Fatal("the rectangle count is not in the test file")
+	}
+	copy(v6Rects[at:], []byte{0xff, 0x7f})
+
+	for name, data := range map[string][]byte{
+		"layers":    slices.Concat([]byte(HeaderV5), huge),
+		"lines":     slices.Concat([]byte(HeaderV5), one, huge),
+		"points":    slices.Concat([]byte(HeaderV5), one, one, lineV5, huge),
+		"v6 points": v6Points,
+		"v6 rects":  v6Rects,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var err error
+			n := allocated(func() {
+				var rm Rm
+				err = rm.UnmarshalBinary(data)
+			})
+			if err == nil {
+				t.Error("the file gives no error")
+			}
+			if n > 200<<10 {
+				t.Errorf("the parser allocated %d bytes for a file of %d bytes", n, len(data))
+			}
+		})
 	}
 }

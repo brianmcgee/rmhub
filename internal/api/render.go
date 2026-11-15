@@ -57,7 +57,7 @@ func (r *Renderer) pdfPool() (*render.PDF, error) {
 
 // Close stops the PDFium pool if it runs.
 func (r *Renderer) Close() error {
-	r.pdfOnce.Do(func() {})
+	r.pdfOnce.Do(func() { r.pdfErr = errors.New("the renderer is stopped") })
 	if r.pdf != nil {
 		return r.pdf.Close()
 	}
@@ -182,6 +182,9 @@ func (l *Library) renderPage(w http.ResponseWriter, r *http.Request) error {
 		}
 		return pool.Render(ctx, pdf, *p.PDFPage, rm, width)
 	})
+	if errors.Is(err, render.ErrTooLarge) {
+		return Errorf(CodeBadRequest, "page %d of entry %s is too large to render with the width %d; request a smaller width", number, d.ID, width)
+	}
 	if err != nil {
 		return fmt.Errorf("render page %d of document %s: %w", number, d.ID, err)
 	}

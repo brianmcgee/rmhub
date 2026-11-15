@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -216,4 +217,57 @@ func must(b []byte, err error) []byte {
 		panic(err)
 	}
 	return b
+}
+
+// TestBadCoordinates makes sure that coordinates far from the page give
+// ErrTooLarge and no large image, and that the renderer ignores
+// coordinates that are not finite.
+func TestBadCoordinates(t *testing.T) {
+	far := func(x, y float32) []byte {
+		return rmtest.File([]rmtest.Stroke{{Pen: uint32(rmfile.Fineliner), Points: []rmtest.Point{{X: 0, Y: 100, W: 8}, {X: x, Y: y, W: 8}}}}, nil)
+	}
+	for name, data := range map[string][]byte{
+		"far down":  far(0, 1e9),
+		"far right": far(1e30, 100),
+		"far rect":  rmtest.File(nil, []rmtest.Glyph{{Text: "a", Rects: []rmtest.Rect{{X: 0, Y: 0, W: 10, H: 1e300}}}}),
+	} {
+		for _, f := range []Format{PNG, SVG} {
+			if _, err := Render(data, nil, f, 4096); !errors.Is(err, ErrTooLarge) {
+				t.Errorf("%s as %s: error %v, want ErrTooLarge", name, f, err)
+			}
+		}
+	}
+	// A long page at the largest width has too many pixels. A smaller
+	// width is correct.
+	long := far(0, 30000)
+	if _, err := Render(long, nil, PNG, 4096); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("long page with the width 4096: error %v, want ErrTooLarge", err)
+	}
+	if _, err := Render(long, nil, PNG, 702); err != nil {
+		t.Errorf("long page with the width 702: %v", err)
+	}
+
+	nan, inf := float32(math.NaN()), float32(math.Inf(1))
+	data := rmtest.File([]rmtest.Stroke{
+		{Pen: uint32(rmfile.Fineliner), Points: []rmtest.Point{{X: -300, Y: 300, W: 8}, {X: nan, Y: 300, W: 8}, {X: -200, Y: inf, W: 8}, {X: -200, Y: 300, W: 8}}},
+		{Pen: uint32(rmfile.Fineliner), Points: []rmtest.Point{{X: inf, Y: nan, W: 8}}},
+	}, []rmtest.Glyph{{Text: "a", Rects: []rmtest.Rect{{X: math.NaN(), Y: 0, W: 10, H: math.Inf(1)}}}})
+	out, err := Render(data, nil, PNG, 1404)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := decode(t, out)
+	if b := img.Bounds(); b.Dx() != 1404 || b.Dy() != 1872 {
+		t.Fatalf("size %v", b)
+	}
+	if c := rgb(img, 452, 300); !near(c, color.RGBA{0, 0, 0, 255}, 40) {
+		t.Errorf("the finite points of the stroke give %v, want black", c)
+	}
+	svg, err := Render(data, nil, SVG, 1404)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(svg), "NaN") || strings.Contains(string(svg), "Inf") {
+		t.Errorf("the SVG has a value that is not finite:\n%s", svg)
+	}
 }

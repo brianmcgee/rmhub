@@ -5,7 +5,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brianmcgee/rmhub/internal/blob"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/library/libtest"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
@@ -555,6 +559,66 @@ func TestChangeFeed(t *testing.T) {
 		case <-s.done:
 		case <-time.After(5 * time.Second):
 			t.Fatal("feed did not end after revocation")
+		}
+	}
+}
+
+// TestUploadChecksAccessFirst makes sure that an upload that the token
+// cannot do leaves no blob in the store.
+func TestUploadChecksAccessFirst(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.Folder("agent", "Agent", "")
+	tr.PDF("d", "D", "", []byte("%PDF-1.7 d"))
+	tr.Commit(4)
+	_, tok := tokenText(t, e.scoped(owner, map[string]any{"label": "a", "grants": grantsOf("agent", "read")}))
+
+	pdf := []byte("%PDF-1.7 not permitted")
+	sum := sha256.Sum256(pdf)
+	for _, tc := range []struct {
+		name, tok, query string
+		status           int
+	}{
+		{"read-only folder", tok, "name=X&parent=agent", 403},
+		{"top level with a scoped token", tok, "name=X", 403},
+		{"parent that is not a folder", owner, "name=X&parent=d", 400},
+		{"parent that does not exist", owner, "name=X&parent=none", 404},
+		{"name with a slash", owner, "name=a%2Fb", 400},
+	} {
+		r := e.req("POST", "/api/v1/library/documents?"+tc.query, tc.tok, pdf, "Content-Type", "application/pdf")
+		if r.status != tc.status {
+			t.Errorf("%s: %d %s", tc.name, r.status, r.body)
+		}
+	}
+	ns, err := blob.NewNamespace(acct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, _, err := e.app.Library.Blobs.Get(context.Background(), ns, hex.EncodeToString(sum[:]))
+	if err == nil {
+		_ = rc.Close()
+	}
+	if !errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("the refused upload is in the blob store: %v", err)
+	}
+}
+
+// TestArchiveRefusesUnsafeNames makes sure that a file name from a tablet
+// that is not a local path does not go into a ZIP file.
+func TestArchiveRefusesUnsafeNames(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	nb := map[string]any{"fileType": "notebook"}
+	tr.Put("up", libtest.Meta("Up", "DocumentType", ""), nb, map[string][]byte{"/../../../evil": []byte("x")})
+	tr.Put("abs", libtest.Meta("Abs", "DocumentType", ""), nb, map[string][]byte{"/": []byte("x")})
+	tr.Put("win", libtest.Meta("Win", "DocumentType", ""), nb, map[string][]byte{`\..\evil`: []byte("x")})
+	tr.Put("ok", libtest.Meta("OK", "DocumentType", ""), nb, map[string][]byte{"/page.rm": []byte("x")})
+	tr.Commit(4)
+	for id, status := range map[string]int{"up": 409, "abs": 409, "win": 409, "ok": 200} {
+		if r := e.req("GET", "/api/v1/library/"+id+"/archive", owner, nil); r.status != status {
+			t.Errorf("archive of %s: %d, want %d: %.100s", id, r.status, status, r.body)
 		}
 	}
 }

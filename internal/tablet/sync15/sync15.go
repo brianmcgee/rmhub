@@ -37,7 +37,7 @@ const (
 	maxIndex = 4 << 20
 	// maxRoot is the maximum size of a root index that a root write can
 	// name.
-	maxRoot = 64 << 20
+	maxRoot = hashtree.MaxRootSize
 	// maxJSON is the maximum size of a JSON request body.
 	maxJSON = 1 << 20
 	// memBlob is the size up to which a blob read stays in memory. A

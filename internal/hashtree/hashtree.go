@@ -17,6 +17,11 @@ import (
 	"strings"
 )
 
+// MaxRootSize is the maximum size in bytes of a root index. The sync
+// service refuses a larger root, and the library reads a root up to this
+// size, so each root that a tablet can commit is readable.
+const MaxRootSize = 64 << 20
+
 // Entry types.
 const (
 	// TypeFile is the type of a file entry, and of a root entry in schema 4.

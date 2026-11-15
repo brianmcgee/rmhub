@@ -456,6 +456,10 @@ func TestPairing(t *testing.T) {
 	if r := e.pair(c.Code, "../x"); r.status != 400 {
 		t.Fatalf("device ID ../x: %d", r.status)
 	}
+	long := map[string]string{"code": c.Code, "deviceDesc": strings.Repeat("d", 257), "deviceID": "RM110-abc-123"}
+	if r := e.do("POST", e.tablet.URL+"/token/json/2/device/new", "", long); r.status != 400 {
+		t.Fatalf("device description of 257 bytes: %d", r.status)
+	}
 	if r := e.pair(c.Code, strings.Repeat("a", 129)); r.status != 400 {
 		t.Fatalf("long device ID: %d", r.status)
 	}

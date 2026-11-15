@@ -300,6 +300,9 @@ func parseV6LineBlock(r *v6Reader, blockVersion uint8, blockEnd int) (*Line, err
 	if err != nil {
 		return nil, err
 	}
+	if int64(pointsLength) > int64(r.remaining()) {
+		return nil, fmt.Errorf("v6: the points are longer than the file")
+	}
 	pointsEnd := r.pos + int(pointsLength)
 
 	pointVersion := 1
@@ -505,6 +508,9 @@ func parseV6GlyphBlock(r *v6Reader, blockEnd int) (*Highlight, error) {
 		return nil, err
 	}
 
+	if int64(numRects)*32 > int64(r.remaining()) {
+		return nil, fmt.Errorf("v6: the rectangles are longer than the file")
+	}
 	rects := make([]HighlightRect, 0, numRects)
 	for i := uint32(0); i < numRects; i++ {
 		x, err := r.readFloat64()
