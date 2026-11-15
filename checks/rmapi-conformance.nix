@@ -127,6 +127,19 @@ pkgs.runCommand "rmapi-conformance-check"
     set -- $(root one)
     [ "$1" = $((before + 2)) ] || fail "root log has $(($1 - before)) entries for 2 changes"
 
+    echo "== API writes, read by rmapi"
+    rmhub mkdir FromAPI > /dev/null || fail "rmhub mkdir"
+    rmhub upload $TMPDIR/doc.pdf --to /FromAPI --name api-doc > /dev/null || fail "rmhub upload"
+    listing=$(rmapi_as one ls /FromAPI)
+    echo "$listing" | grep -q '\[f\].*api-doc$' || fail "rmapi does not list the API upload: $listing"
+    mkdir -p $TMPDIR/get-api
+    (cd $TMPDIR/get-api && rmapi_as one get /FromAPI/api-doc) || fail "rmapi get of the API upload"
+    [ -s $TMPDIR/get-api/api-doc.rmdoc ] || fail "rmapi get of the API upload gave no file"
+    rmapi_as one mv /FromAPI/api-doc /FromAPI/moved || fail "rmapi mv of the API upload"
+    rmhub stat /FromAPI/moved --json | jq -e '.type == "pdf"' > /dev/null || fail "rmhub stat after rmapi mv"
+    rmhub trash /FromAPI/moved > /dev/null || fail "rmhub trash"
+    rmapi_as one ls /FromAPI | grep -q moved && fail "rmapi lists a trashed document"
+
     echo "all rmapi conformance steps passed"
     touch $out
   ''
