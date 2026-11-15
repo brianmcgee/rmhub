@@ -452,13 +452,7 @@ func (l *Library) copyToZip(r *http.Request, zw *zip.Writer, ns blob.Namespace, 
 
 // run does a write operation and answers with the entry.
 func (l *Library) run(w http.ResponseWriter, r *http.Request, status int, op libops.Op) error {
-	p := PrincipalFrom(r.Context())
-	req := libops.Request{
-		Account: p.Account,
-		Source:  rootlog.Source{Type: rootlog.SourceToken, ID: p.TokenID},
-		Scope:   grants.FromChain(p.Chain),
-		IfMatch: ifMatch(r),
-	}
+	req := opRequest(r)
 	s, id, err := l.Ops.Run(r.Context(), req, op)
 	if err != nil {
 		return opError(err)
@@ -474,6 +468,17 @@ func (l *Library) run(w http.ResponseWriter, r *http.Request, status int, op lib
 	// has no path.
 	WriteJSON(w, status, v.entry(d, v.visible(id)))
 	return nil
+}
+
+// opRequest returns the write request of the principal of r.
+func opRequest(r *http.Request) libops.Request {
+	p := PrincipalFrom(r.Context())
+	return libops.Request{
+		Account: p.Account,
+		Source:  rootlog.Source{Type: rootlog.SourceToken, ID: p.TokenID},
+		Scope:   grants.FromChain(p.Chain),
+		IfMatch: ifMatch(r),
+	}
 }
 
 // ifMatch returns the hash of the If-Match header without quotes.
@@ -549,6 +554,11 @@ func (l *Library) upload(w http.ResponseWriter, r *http.Request) error {
 	}
 	if r.ContentLength > l.MaxUpload {
 		return Errorf(CodeBadRequest, "the body is larger than %d bytes (api.max_upload_bytes)", l.MaxUpload)
+	}
+	// Check the access before the body goes to the blob store, so that a
+	// token without write access cannot fill the store.
+	if err := l.Ops.CheckNew(r.Context(), opRequest(r), q.Get("parent"), name); err != nil {
+		return opError(err)
 	}
 
 	f, err := os.CreateTemp(l.TempDir, "upload-*")

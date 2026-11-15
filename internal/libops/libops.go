@@ -147,6 +147,21 @@ func (o *Ops) Run(ctx context.Context, req Request, op Op) (*library.Snapshot, s
 	return nil, "", errorf(KindConflict, "the root changed during %d attempts; try again", Attempts)
 }
 
+// CheckNew checks the name and the parent of a new entry against the
+// current snapshot, and changes nothing. Call it before work that costs
+// storage. Run does the same checks again at the commit.
+func (o *Ops) CheckNew(ctx context.Context, req Request, parent, name string) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	s, err := o.Lib.Current(ctx, req.Account)
+	if err != nil {
+		return err
+	}
+	t := &Tx{S: s, ctx: ctx, req: req, o: o}
+	return t.destination(parent)
+}
+
 // Lookup returns the entry with the ID if the scope can see it.
 func (t *Tx) Lookup(id string) (*library.Doc, error) {
 	d, ok := t.S.Doc(id)
