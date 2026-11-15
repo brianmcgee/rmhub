@@ -12,7 +12,7 @@ in
 pkgs.runCommand "s3-contract-check"
   {
     nativeBuildInputs = [
-      pkgs.go
+      pkgs.go_1_27
       pkgs.versitygw
       pkgs.curl
     ];

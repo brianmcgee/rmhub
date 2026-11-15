@@ -2,7 +2,9 @@
 let
   inherit (pkgs) lib;
 in
-pkgs.buildGoModule {
+# Use the Go release that the `go` line of go.mod names. When that line
+# changes, change the release here, in devshell.nix and in checks/.
+pkgs.buildGo127Module {
   pname = "rmhub";
   version = "0.0.0-dev";
 

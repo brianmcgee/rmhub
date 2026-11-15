@@ -1,7 +1,7 @@
 { pkgs, perSystem }:
 pkgs.mkShell {
   packages = [
-    pkgs.go
+    pkgs.go_1_27
     pkgs.gopls
     pkgs.gotools
     pkgs.golangci-lint

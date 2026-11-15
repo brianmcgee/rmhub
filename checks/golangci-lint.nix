@@ -7,7 +7,7 @@ in
 pkgs.runCommand "golangci-lint-check"
   {
     nativeBuildInputs = [
-      pkgs.go
+      pkgs.go_1_27
       pkgs.golangci-lint
     ];
   }
