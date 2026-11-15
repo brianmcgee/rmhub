@@ -2,10 +2,10 @@
 
 ## 1. Limiter
 
-- [ ] 1.1 Write `internal/ratelimit` with the keyed token bucket and a clock that tests can set. Verify with a test that a limit of 10 accepts 10 requests, refuses request 11, and accepts one more after 6 seconds.
-- [ ] 1.2 Add the wait time to the answer of `Allow`. Verify with a test that the wait time of an empty bucket of 10 is 6 seconds.
-- [ ] 1.3 Add the sweep of full buckets and the bound of 100 000 keys. Verify with a test that the map has no key after a sweep of full buckets, and that key 100 001 is refused.
-- [ ] 1.4 Verify with `CGO_ENABLED=1 go test -race ./internal/ratelimit` that parallel calls of `Allow` have no data race.
+- [x] 1.1 Write `internal/ratelimit` with the keyed token bucket and a clock that tests can set. Verify with a test that a limit of 10 accepts 10 requests, refuses request 11, and accepts one more after 6 seconds.
+- [x] 1.2 Add the wait time to the answer of `Allow`. Verify with a test that the wait time of an empty bucket of 10 is 6 seconds.
+- [x] 1.3 Add the sweep of full buckets and the bound of 100 000 keys. Verify with a test that the map has no key after a sweep of full buckets, and that key 100 001 is refused.
+- [x] 1.4 Verify with `CGO_ENABLED=1 go test -race ./internal/ratelimit` that parallel calls of `Allow` have no data race.
 
 ## 2. Configuration
 
