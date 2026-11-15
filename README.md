@@ -27,8 +27,8 @@ The documentation is in [`docs/`](docs/README.md). It follows the
 | Reference | [Server configuration](docs/reference/configuration.md), [Command line](docs/reference/cli.md), [HTTP API](docs/reference/http-api.md), [NixOS module](docs/reference/nixos-module.md) |
 | Explanation | [Architecture](docs/explanation/architecture.md), [Tokens and access](docs/explanation/access.md), [Request limits](docs/explanation/request-limits.md) |
 
-`docs/agents/SKILL.md` is a guide for AI agents. Give it to an agent
-together with a scoped token.
+[`skills/rmhub/SKILL.md`](skills/rmhub/SKILL.md) is a guide for AI
+agents. Give it to an agent together with a scoped token.
 
 ## Development
 

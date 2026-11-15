@@ -83,7 +83,7 @@ scoped token. Without a grant it MUST create an owner token.
 - **THEN** the command prints a token with a write grant on the folder `Agent`
 
 ### Requirement: Agent guide
-The repository MUST have the file `docs/agents/SKILL.md`. The guide MUST
+The repository MUST have the file `skills/rmhub/SKILL.md`. The guide MUST
 contain these topics:
 
 - How to set `RMHUB_URL` and `RMHUB_TOKEN`.

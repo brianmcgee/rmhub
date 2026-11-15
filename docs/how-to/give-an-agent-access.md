@@ -35,7 +35,7 @@ export RMHUB_URL=https://rmhub.example.org
 export RMHUB_TOKEN=rmh_…
 ```
 
-Give the agent the file [`docs/agents/SKILL.md`](../agents/SKILL.md).
+Give the agent the file [`skills/rmhub/SKILL.md`](https://github.com/brianmcgee/rmhub/blob/main/skills/rmhub/SKILL.md).
 It tells the agent how to use each command, and what to do for each
 exit code.
 

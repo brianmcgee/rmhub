@@ -41,7 +41,7 @@ token = "rmh_…"
 | `rmhub mkdir`, `rmhub mv`, `rmhub rename`, `rmhub trash` | Change the library. Each change gets to the tablets at their next sync. |
 | `rmhub watch [--after <generation>]` | Print the changes of the library, one JSON line for each generation. |
 
-[The guide for AI agents](../agents/SKILL.md) gives the JSON output and
+[The guide for AI agents](https://github.com/brianmcgee/rmhub/blob/main/skills/rmhub/SKILL.md) gives the JSON output and
 an example of each library command.
 
 ## Entry arguments

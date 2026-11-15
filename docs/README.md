@@ -30,8 +30,8 @@ your need.
 - [Command line](reference/cli.md)
 - [HTTP API](reference/http-api.md)
 - [NixOS module](reference/nixos-module.md)
-- [Guide for AI agents](agents/SKILL.md): a skill file that you give to
-  an agent together with a scoped token.
+- [Guide for AI agents](https://github.com/brianmcgee/rmhub/blob/main/skills/rmhub/SKILL.md):
+  a skill file that you give to an agent together with a scoped token.
 
 ## Explanation
 
@@ -48,7 +48,7 @@ branch. Use this table to find the pages.
 | Change | Pages to update |
 |---|---|
 | A configuration key, a default value or the behavior of `rmhub serve` | [reference/configuration.md](reference/configuration.md) |
-| A command, an option, the output or an exit code | [reference/cli.md](reference/cli.md), [agents/SKILL.md](agents/SKILL.md) |
+| A command, an option, the output or an exit code | [reference/cli.md](reference/cli.md), `skills/rmhub/SKILL.md` |
 | An endpoint of the rmhub API or the error format | [reference/http-api.md](reference/http-api.md) |
 | An option of the NixOS module | [reference/nixos-module.md](reference/nixos-module.md) |
 | A setup procedure or a deployment procedure | The tutorial and the how-to guides that contain the procedure |
