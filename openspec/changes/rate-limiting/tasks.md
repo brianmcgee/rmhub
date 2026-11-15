@@ -48,11 +48,11 @@
 
 ## 8. Integration
 
-- [ ] 8.1 Run `nix fmt` and verify that no file changes.
-- [ ] 8.2 Run `golangci-lint run ./...` and verify that it reports 0 issues.
-- [ ] 8.3 Run `go test ./...` and verify that all tests pass.
-- [ ] 8.4 Run `nix flake check` and verify that all checks pass.
-- [ ] 8.5 Start the built server, send 11 pairing requests with `curl`, and verify that request 11 gets status 429.
+- [x] 8.1 Run `nix fmt` and verify that no file changes.
+- [x] 8.2 Run `golangci-lint run ./...` and verify that it reports 0 issues.
+- [x] 8.3 Run `go test ./...` and verify that all tests pass.
+- [x] 8.4 Run `nix flake check` and verify that all checks pass.
+- [x] 8.5 Start the built server, send 11 pairing requests with `curl`, and verify that request 11 gets status 429.
 
 ## Workflow follow-up
 
