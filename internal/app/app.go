@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/brianmcgee/rmhub/internal/accounts"
 	"github.com/brianmcgee/rmhub/internal/api"
 	"github.com/brianmcgee/rmhub/internal/config"
 	"github.com/brianmcgee/rmhub/internal/devices"
+	"github.com/brianmcgee/rmhub/internal/libops"
+	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/pairing"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/server"
@@ -34,6 +37,7 @@ type App struct {
 	Sync      *sync15.Service
 	Hub       *notify.Hub
 	API       *api.Service
+	Library   *api.Library
 	log       *slog.Logger
 }
 
@@ -74,7 +78,26 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		TempDir:    stores.TempDir,
 		CheckFiles: cfg.Tablet.CheckFiles != "none",
 	}
-	a.API = &api.Service{Accounts: a.Accounts, Tokens: a.Tokens, Devices: a.Devices, Pairing: a.Pairing, Admin: admin, Log: log}
+	lib := library.New(a.Roots, stores.Blob)
+	a.API = &api.Service{Accounts: a.Accounts, Tokens: a.Tokens, Devices: a.Devices, Pairing: a.Pairing, Library: lib, Admin: admin, Log: log}
+	a.Library = &api.Library{
+		Lib: lib,
+		Ops: &libops.Ops{
+			Lib: lib, Blobs: stores.Blob, Roots: a.Roots, Now: time.Now,
+			Schema: func(ctx context.Context, account string) (int, error) {
+				acct, err := a.Accounts.Get(ctx, account)
+				return acct.SchemaVersion, err
+			},
+		},
+		Blobs:     stores.Blob,
+		Roots:     a.Roots,
+		Tokens:    a.Tokens,
+		Kinds:     a.API.Kinds(),
+		Log:       log,
+		MaxUpload: cfg.API.MaxUploadBytes,
+		TempDir:   stores.TempDir,
+		Stop:      ctx.Done(),
+	}
 	go a.Hub.Run(ctx, a.Roots)
 	return a, nil
 }
@@ -95,6 +118,7 @@ func (a *App) TabletHandler() http.Handler {
 func (a *App) APIHandler() http.Handler {
 	m := api.NewMux(a.API.Log)
 	a.API.Register(m)
+	a.Library.Register(m)
 	mux := http.NewServeMux()
 	server.HandleHealth(mux)
 	mux.Handle("/api/", m)

@@ -11,6 +11,8 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+
+	"github.com/brianmcgee/rmhub/internal/tokens"
 )
 
 // MaxBody is the maximum size of a JSON request body.
@@ -109,10 +111,16 @@ func DecodeJSON(r *http.Request, v any) error {
 type Principal struct {
 	// Admin is true for the admin token.
 	Admin bool
-	// Account and TokenID identify an owner token.
+	// Account and TokenID identify an account token.
 	Account string
 	TokenID string
+	// Chain is the token and its ancestors, from tokens.Store.Check.
+	// Chain[0] is the token itself.
+	Chain []tokens.Token
 }
+
+// Scoped tells if the principal is a scoped token.
+func (p *Principal) Scoped() bool { return len(p.Chain) > 0 && p.Chain[0].Scoped() }
 
 // TokenKind authenticates one kind of bearer token.
 type TokenKind interface {

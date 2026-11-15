@@ -48,6 +48,7 @@ conditional write. A backend that accepts the write stops the server.
 | `admin.token_file` | | File with the admin token. Without it, each admin request gets status 401. |
 | `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
 | `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
+| `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
