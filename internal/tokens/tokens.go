@@ -102,12 +102,32 @@ func Parse(tok string) (account, id, secret string, ok bool) {
 	return parts[0], parts[1], parts[2], true
 }
 
-// Record is the stored form of an owner token.
+// Access levels of a grant.
+const (
+	AccessRead  = "read"
+	AccessWrite = "write"
+)
+
+// MaxScoped is the maximum number of scoped tokens in one parent chain.
+const MaxScoped = 4
+
+// Grant gives a scoped token access to a folder and its descendants.
+type Grant struct {
+	Folder string `json:"folder"`
+	Access string `json:"access"`
+}
+
+// Record is the stored form of a token.
 type Record struct {
 	SecretHash string     `json:"secretHash"`
 	Label      string     `json:"label"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	ExpiresAt  *time.Time `json:"expiresAt"`
+	// Parent is the ID of the token that made a scoped token. It is
+	// empty for an owner token.
+	Parent string `json:"parent,omitempty"`
+	// Grants is empty for an owner token.
+	Grants []Grant `json:"grants,omitempty"`
 }
 
 // Token describes a token without its secret.
@@ -116,9 +136,27 @@ type Token struct {
 	Label     string     `json:"label"`
 	CreatedAt time.Time  `json:"createdAt"`
 	ExpiresAt *time.Time `json:"expiresAt"`
+	Parent    string     `json:"parent,omitempty"`
+	Grants    []Grant    `json:"grants,omitempty"`
 }
 
-// Store keeps owner tokens in a state store.
+// Scoped tells if the token has grants.
+func (t Token) Scoped() bool { return len(t.Grants) > 0 }
+
+func (r Record) token(id string) Token {
+	return Token{ID: id, Label: r.Label, CreatedAt: r.CreatedAt, ExpiresAt: r.ExpiresAt, Parent: r.Parent, Grants: r.Grants}
+}
+
+// Spec holds the fields of a new token.
+type Spec struct {
+	Label     string
+	ExpiresAt *time.Time
+	// Parent and Grants are set for a scoped token only.
+	Parent string
+	Grants []Grant
+}
+
+// Store keeps tokens in a state store.
 type Store struct {
 	st  state.Store
 	now func() time.Time
@@ -137,19 +175,24 @@ func hashSecret(secret string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// Issue makes an owner token for the account. The caller checks that the
-// account exists. It returns the token text, which the server does not
-// keep.
-func (s *Store) Issue(ctx context.Context, account, label string, expiresAt *time.Time) (string, Token, error) {
+// Issue makes a token for the account. The caller checks that the
+// account exists and that a scoped token has fewer rights than its
+// parent. It returns the token text, which the server does not keep.
+func (s *Store) Issue(ctx context.Context, account string, spec Spec) (string, Token, error) {
 	if !ids.IsAccountID(account) {
 		return "", Token{}, fmt.Errorf("invalid account %q", account)
+	}
+	if (spec.Parent == "") != (len(spec.Grants) == 0) {
+		return "", Token{}, errors.New("a scoped token needs a parent and grants")
 	}
 	secret := ids.Random(SecretLen)
 	rec := Record{
 		SecretHash: hashSecret(secret),
-		Label:      label,
+		Label:      spec.Label,
 		CreatedAt:  s.now().UTC().Truncate(time.Second),
-		ExpiresAt:  expiresAt,
+		ExpiresAt:  spec.ExpiresAt,
+		Parent:     spec.Parent,
+		Grants:     spec.Grants,
 	}
 	b, err := json.Marshal(rec)
 	if err != nil {
@@ -165,35 +208,61 @@ func (s *Store) Issue(ctx context.Context, account, label string, expiresAt *tim
 			return "", Token{}, err
 		}
 		text := Prefix + account + "_" + id + "_" + secret
-		return text, Token{ID: id, Label: label, CreatedAt: rec.CreatedAt, ExpiresAt: expiresAt}, nil
+		return text, rec.token(id), nil
 	}
 	return "", Token{}, errors.New("token ID collision three times")
 }
 
-// Check returns the account and the token ID of a valid owner token.
-func (s *Store) Check(ctx context.Context, tok string) (account, id string, err error) {
-	account, id, secret, ok := Parse(tok)
-	if !ok {
-		return "", "", ErrInvalid
-	}
+func (s *Store) record(ctx context.Context, account, id string) (Record, error) {
 	b, _, err := s.st.Get(ctx, recordKey(account, id))
 	if errors.Is(err, state.ErrNotFound) {
-		return "", "", ErrInvalid
+		return Record{}, ErrInvalid
 	}
 	if err != nil {
-		return "", "", err
+		return Record{}, err
 	}
 	var rec Record
 	if err := json.Unmarshal(b, &rec); err != nil {
-		return "", "", fmt.Errorf("token record %s: %w", id, err)
+		return Record{}, fmt.Errorf("token record %s: %w", id, err)
+	}
+	return rec, nil
+}
+
+func (s *Store) expired(rec Record) bool {
+	return rec.ExpiresAt != nil && !s.now().Before(*rec.ExpiresAt)
+}
+
+// Check returns the account and the parent chain of a valid token. The
+// chain starts with the token itself and ends with an owner token. If a
+// token of the chain is missing or expired, Check returns ErrInvalid.
+func (s *Store) Check(ctx context.Context, tok string) (account string, chain []Token, err error) {
+	account, id, secret, ok := Parse(tok)
+	if !ok {
+		return "", nil, ErrInvalid
+	}
+	rec, err := s.record(ctx, account, id)
+	if err != nil {
+		return "", nil, err
 	}
 	if subtle.ConstantTimeCompare([]byte(hashSecret(secret)), []byte(rec.SecretHash)) != 1 {
-		return "", "", ErrInvalid
+		return "", nil, ErrInvalid
 	}
-	if rec.ExpiresAt != nil && !s.now().Before(*rec.ExpiresAt) {
-		return "", "", ErrInvalid
+	for {
+		if s.expired(rec) {
+			return "", nil, ErrInvalid
+		}
+		chain = append(chain, rec.token(id))
+		if rec.Parent == "" {
+			return account, chain, nil
+		}
+		if len(chain) > MaxScoped {
+			return "", nil, ErrInvalid
+		}
+		id = rec.Parent
+		if rec, err = s.record(ctx, account, id); err != nil {
+			return "", nil, err
+		}
 	}
-	return account, id, nil
 }
 
 // List returns the tokens of the account, ordered by ID.
@@ -216,13 +285,39 @@ func (s *Store) List(ctx context.Context, account string) ([]Token, error) {
 		if err := json.Unmarshal(b, &rec); err != nil {
 			return nil, fmt.Errorf("token record %s: %w", k, err)
 		}
-		out = append(out, Token{ID: strings.TrimPrefix(k, prefix), Label: rec.Label, CreatedAt: rec.CreatedAt, ExpiresAt: rec.ExpiresAt})
+		out = append(out, rec.token(strings.TrimPrefix(k, prefix)))
 	}
 	slices.SortFunc(out, func(a, b Token) int { return strings.Compare(a.ID, b.ID) })
 	return out, nil
 }
 
-// Revoke deletes a token of the account.
+// Descendants returns the tokens of the list whose parent chain contains
+// the token id, ordered as in the list.
+func Descendants(list []Token, id string) []Token {
+	parent := make(map[string]string, len(list))
+	for _, t := range list {
+		parent[t.ID] = t.Parent
+	}
+	out := []Token{}
+	for _, t := range list {
+		p := t.Parent
+		for range MaxScoped + 1 {
+			if p == "" {
+				break
+			}
+			if p == id {
+				out = append(out, t)
+				break
+			}
+			p = parent[p]
+		}
+	}
+	return out
+}
+
+// Revoke deletes a token of the account and each of its descendants. The
+// token is deleted first. A descendant that stays after a crash has a
+// missing parent, so Check refuses it.
 func (s *Store) Revoke(ctx context.Context, account, id string) error {
 	if !ids.IsAccountID(account) || !ids.IsBase32(id, IDLen) {
 		return ErrNotFound
@@ -233,5 +328,17 @@ func (s *Store) Revoke(ctx context.Context, account, id string) error {
 	} else if err != nil {
 		return err
 	}
-	return s.st.Delete(ctx, key)
+	list, err := s.List(ctx, account)
+	if err != nil {
+		return err
+	}
+	if err := s.st.Delete(ctx, key); err != nil {
+		return err
+	}
+	for _, t := range Descendants(list, id) {
+		if err := s.st.Delete(ctx, recordKey(account, t.ID)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
