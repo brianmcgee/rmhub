@@ -92,6 +92,36 @@ address = "127.0.0.1:8080"
 address = "127.0.0.1:8081"
 ```
 
+### Request limits
+
+The server has three request limits. Each limit is a number of requests
+in one minute. A client can use the full number at one time; after
+that, the number fills again at a constant rate.
+
+| Key | Default | Limit |
+|---|---|---|
+| `limits.pairing_per_minute` | `10` | Pairing attempts of one client address. Each attempt counts, with a valid code or not. All addresses of one IPv6 /64 network count as one address. |
+| `limits.api_per_minute` | `600` | API requests of one token. A scoped token and its parent token have separate limits. |
+| `limits.render_per_minute` | `60` | Page renders of one account, for all its tokens together. A page that is in the render cache does not count. |
+
+Above a limit, the server answers with status 429 and a `Retry-After`
+header with the wait time in seconds. The API gives the error code
+`rate_limited`, and the client exits with code 6. The request did
+nothing.
+
+The value `-1` turns a limit off. The value `0` is an error.
+
+There is no limit on the sync requests of a paired tablet, and no limit
+on requests with a token that is not valid. Use the reverse proxy to
+stop a flood of such requests.
+
+The server keeps the counts in memory. A restart sets them to zero.
+If two server processes use one state store, each process has its own
+counts, so a client can use each limit two times.
+
+Behind a reverse proxy, set `listen.tablet.trusted_proxies`; see
+"Deploy on NixOS". Without it, all clients share one pairing limit.
+
 ## First run
 
 1. Generate the admin token and put it in a file that only the server
@@ -259,6 +289,7 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_read_timeout 1h;
@@ -269,6 +300,22 @@ server {
 
 With this setup, the `upstream` of the proxy on the tablet is
 `https://rmhub.example.org` (port 443).
+
+Behind a reverse proxy, rmhub sees only the address of the proxy. Then
+all clients share one bucket of the pairing limit (see "Request
+limits"). The `X-Forwarded-For` line above gives the client address to
+rmhub. Tell rmhub to trust that header from the proxy:
+
+```toml
+[listen.tablet]
+address = "127.0.0.1:8080"
+trusted_proxies = ["127.0.0.1"]
+```
+
+List only the addresses of your own proxies. rmhub believes the
+`X-Forwarded-For` header of each address in the list. With a wrong
+entry, for example `0.0.0.0/0`, each client can choose its own address,
+and the pairing limit has no effect.
 
 ## Switch from rmfakecloud
 

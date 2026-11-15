@@ -42,9 +42,9 @@
 
 ## 7. Deployment guide
 
-- [ ] 7.1 Add the `X-Forwarded-For` line to the nginx example of `README.md`, and the `trusted_proxies` setting with the warning. Verify the nginx example with `nginx -t`.
-- [ ] 7.2 Add a section on the limits to `README.md`: the three limits, the keys, the value -1 and the note about two server processes. Verify that the section names each key of `[limits]`.
-- [ ] 7.3 Add `trusted_proxies` for the nginx setup to the NixOS VM test or to a new check, with one pairing through the proxy. Verify that the check passes.
+- [x] 7.1 Add the `X-Forwarded-For` line to the nginx example of `README.md`, and the `trusted_proxies` setting with the warning. Verify the nginx example with `nginx -t`.
+- [x] 7.2 Add a section on the limits to `README.md`: the three limits, the keys, the value -1 and the note about two server processes. Verify that the section names each key of `[limits]`.
+- [x] 7.3 Add `trusted_proxies` for the nginx setup to the NixOS VM test or to a new check, with one pairing through the proxy. Verify that the check passes.
 
 ## 8. Integration
 
