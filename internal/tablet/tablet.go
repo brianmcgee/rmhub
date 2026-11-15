@@ -70,6 +70,11 @@ func bearer(r *http.Request) string {
 	return strings.TrimSpace(h[7:])
 }
 
+// maxDeviceDesc is the maximum length in bytes of a device description.
+// The description goes into the device record and into each token of
+// the device.
+const maxDeviceDesc = 256
+
 type deviceNewRequest struct {
 	Code       string `json:"code"`
 	DeviceDesc string `json:"deviceDesc"`
@@ -84,7 +89,7 @@ func (s *Service) deviceNew(w http.ResponseWriter, r *http.Request) {
 	}
 	// Check the device ID before the code use, so that a bad request does
 	// not consume the code.
-	if !devices.ValidID(req.DeviceID) {
+	if !devices.ValidID(req.DeviceID) || len(req.DeviceDesc) > maxDeviceDesc {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
