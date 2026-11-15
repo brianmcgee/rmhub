@@ -603,3 +603,22 @@ func TestUploadChecksAccessFirst(t *testing.T) {
 		t.Fatalf("the refused upload is in the blob store: %v", err)
 	}
 }
+
+// TestArchiveRefusesUnsafeNames makes sure that a file name from a tablet
+// that is not a local path does not go into a ZIP file.
+func TestArchiveRefusesUnsafeNames(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	nb := map[string]any{"fileType": "notebook"}
+	tr.Put("up", libtest.Meta("Up", "DocumentType", ""), nb, map[string][]byte{"/../../../evil": []byte("x")})
+	tr.Put("abs", libtest.Meta("Abs", "DocumentType", ""), nb, map[string][]byte{"/": []byte("x")})
+	tr.Put("win", libtest.Meta("Win", "DocumentType", ""), nb, map[string][]byte{`\..\evil`: []byte("x")})
+	tr.Put("ok", libtest.Meta("OK", "DocumentType", ""), nb, map[string][]byte{"/page.rm": []byte("x")})
+	tr.Commit(4)
+	for id, status := range map[string]int{"up": 409, "abs": 409, "win": 409, "ok": 200} {
+		if r := e.req("GET", "/api/v1/library/"+id+"/archive", owner, nil); r.status != status {
+			t.Errorf("archive of %s: %d, want %d: %.100s", id, r.status, status, r.body)
+		}
+	}
+}

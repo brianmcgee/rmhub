@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -415,6 +416,11 @@ func (l *Library) archive(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	for _, f := range d.Files {
+		// The names come from a tablet. A name such as ../x would make
+		// an unsafe ZIP file for a client that extracts it.
+		if !fs.ValidPath(f.Name) || f.Name == "." || strings.Contains(f.Name, `\`) {
+			return Errorf(CodeConflict, "the file name %q of entry %s is not a safe path for an archive", f.Name, d.ID)
+		}
 		if !have[f.Hash] {
 			return Errorf(CodeNotFound, "the file %s of entry %s is not in the blob store", f.Name, d.ID)
 		}
