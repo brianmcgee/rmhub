@@ -94,7 +94,7 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		return nil, fmt.Errorf("render.cache_dir: %w", err)
 	}
 	lib := library.New(a.Roots, stores.Blob)
-	a.API = &api.Service{Accounts: a.Accounts, Tokens: a.Tokens, Devices: a.Devices, Pairing: a.Pairing, Library: lib, Admin: admin, Log: log}
+	a.API = &api.Service{Accounts: a.Accounts, Tokens: a.Tokens, Devices: a.Devices, Pairing: a.Pairing, Library: lib, Admin: admin, Limit: ratelimit.New(cfg.Limits.APIPerMinute), Log: log}
 	a.Library = &api.Library{
 		Lib: lib,
 		Ops: &libops.Ops{
@@ -114,6 +114,7 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		Stop:      ctx.Done(),
 		Render:    api.NewRenderer(cache, runtime.NumCPU(), log),
 	}
+	a.Library.Render.Limit = ratelimit.New(cfg.Limits.RenderPerMinute)
 	go func() {
 		<-ctx.Done()
 		_ = a.Library.Render.Close()

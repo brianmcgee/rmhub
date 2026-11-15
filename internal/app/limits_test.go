@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -117,5 +118,107 @@ func TestPairingRecordsAreDeleted(t *testing.T) {
 		if r := e.pair(c.Code, "dev-"+c.Code); r.status != 200 {
 			t.Errorf("code %s: status %d", c.Code, r.status)
 		}
+	}
+}
+
+func TestAPILimit(t *testing.T) {
+	e := newEnvWith(t, true, "[limits]\napi_per_minute = 5\n")
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.Folder("agent", "Agent", "")
+	tr.Commit(4)
+	_, tok := tokenText(t, e.scoped(owner, map[string]any{"label": "agent", "grants": grantsOf("agent", "read")}))
+
+	// A request with a token that is not valid takes no unit.
+	bad := tok[:len(tok)-1] + "a"
+	if tok == bad {
+		bad = tok[:len(tok)-1] + "b"
+	}
+	for range 8 {
+		if r := e.req("GET", "/api/v1/library", bad, nil); r.status != 401 {
+			t.Fatalf("bad token: status %d, want 401", r.status)
+		}
+	}
+	for i := range 5 {
+		if r := e.req("GET", "/api/v1/library", tok, nil); r.status != 200 {
+			t.Fatalf("request %d: status %d %s", i+1, r.status, r.body)
+		}
+	}
+	// A refused request does not change data.
+	r := e.jreq("POST", "/api/v1/account/tokens", tok, map[string]any{"grants": grantsOf("agent", "read")})
+	limited(t, r.status, r.header.Get("Retry-After"))
+	var body struct {
+		Error struct{ Code, Message string }
+	}
+	r.json(t, &body)
+	if body.Error.Code != "rate_limited" || body.Error.Message == "" {
+		t.Errorf("error body %s", r.body)
+	}
+	if got := r.header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q", got)
+	}
+	// The owner token has its own bucket. It used one unit for the
+	// scoped token.
+	var all []struct{ ID string }
+	lr := e.req("GET", "/api/v1/account/tokens", owner, nil)
+	if lr.status != 200 {
+		t.Fatalf("owner token: status %d %s", lr.status, lr.body)
+	}
+	lr.json(t, &all)
+	if len(all) != 2 {
+		t.Errorf("tokens %s, want the owner token and the first scoped token", lr.body)
+	}
+	for i := range 10 {
+		if r := e.req("GET", "/healthz", "", nil); r.status != 200 {
+			t.Fatalf("healthz %d: status %d", i+1, r.status)
+		}
+	}
+}
+
+func TestAPILimitOff(t *testing.T) {
+	e := newEnvWith(t, true, "[limits]\napi_per_minute = -1\n")
+	_, owner := e.user("ada@example.org")
+	for i := range 1000 {
+		if r := e.req("GET", "/api/v1/account", owner, nil); r.status != 200 {
+			t.Fatalf("request %d: status %d", i+1, r.status)
+		}
+	}
+}
+
+func TestRenderLimit(t *testing.T) {
+	e := newEnvWith(t, true, "[limits]\nrender_per_minute = 2\n")
+	acct, owner := e.user("ada@example.org")
+	tr := e.tree(acct)
+	tr.Folder("agent", "Agent", "")
+	putNotebook(tr, "nb", "Sketch", "agent", 3)
+	tr.Commit(4)
+	_, tok := tokenText(t, e.scoped(owner, map[string]any{"label": "agent", "grants": grantsOf("agent", "read")}))
+	page := func(tok string, n int, hdr ...string) hresp {
+		return e.req("GET", fmt.Sprintf("/api/v1/library/nb/pages/%d/render", n), tok, nil, hdr...)
+	}
+	first := page(owner, 1)
+	if first.status != 200 {
+		t.Fatalf("page 1: status %d %s", first.status, first.body)
+	}
+	if r := page(owner, 2); r.status != 200 {
+		t.Fatalf("page 2: status %d %s", r.status, r.body)
+	}
+	// The limit is for the account, so a second token has no bucket of
+	// its own.
+	r := page(tok, 3)
+	limited(t, r.status, r.header.Get("Retry-After"))
+	if r := page(owner, 3); r.status != 429 {
+		t.Errorf("page 3 with the owner token: status %d, want 429", r.status)
+	}
+	// The cache and the ETag check need no render.
+	if r := page(tok, 1); r.status != 200 || string(r.body) != string(first.body) {
+		t.Errorf("page 1 from the cache: status %d", r.status)
+	}
+	if r := page(tok, 3, "If-None-Match", r.header.Get("ETag")); r.status != 304 {
+		t.Errorf("page 3 with its ETag: status %d, want 304", r.status)
+	}
+	// A different width is a new render.
+	if r := e.req("GET", "/api/v1/library/nb/pages/1/render?width=300", owner, nil); r.status != 429 {
+		t.Errorf("page 1 with a new width: status %d, want 429", r.status)
 	}
 }

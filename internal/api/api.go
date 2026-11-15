@@ -11,7 +11,9 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/brianmcgee/rmhub/internal/ratelimit"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
 
@@ -26,6 +28,7 @@ const (
 	CodeNotFound           = "not_found"
 	CodeConflict           = "conflict"
 	CodePreconditionFailed = "precondition_failed"
+	CodeRateLimited        = "rate_limited"
 	CodeInternal           = "internal"
 )
 
@@ -36,6 +39,7 @@ var statusOf = map[string]int{
 	CodeNotFound:           http.StatusNotFound,
 	CodeConflict:           http.StatusConflict,
 	CodePreconditionFailed: http.StatusPreconditionFailed,
+	CodeRateLimited:        http.StatusTooManyRequests,
 	CodeInternal:           http.StatusInternalServerError,
 }
 
@@ -43,6 +47,9 @@ var statusOf = map[string]int{
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// RetryAfter is the wait time of an error with the code
+	// rate_limited. It goes into the Retry-After header.
+	RetryAfter time.Duration `json:"-"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -58,6 +65,19 @@ func (e *Error) Status() int {
 // Errorf returns an API error.
 func Errorf(code, format string, args ...any) *Error {
 	return &Error{Code: code, Message: fmt.Sprintf(format, args...)}
+}
+
+// take takes one unit from the bucket of the key. If the bucket is
+// empty, it returns an error with the code rate_limited. The text what
+// names the limit, for example "API requests of this token".
+func take(l *ratelimit.Limiter, key, what string) error {
+	ok, wait := l.Allow(key)
+	if ok {
+		return nil
+	}
+	e := Errorf(CodeRateLimited, "too many %s in one minute", what)
+	e.RetryAfter = wait
+	return e
 }
 
 // ErrorBody is the body of each error response.
@@ -80,6 +100,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 	if !errors.As(err, &e) {
 		log.Error("api request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 		e = Errorf(CodeInternal, "internal error")
+	}
+	if e.Code == CodeRateLimited {
+		w.Header().Set("Retry-After", ratelimit.RetryAfter(e.RetryAfter))
 	}
 	WriteJSON(w, e.Status(), ErrorBody{Error: e})
 }
@@ -127,7 +150,8 @@ type TokenKind interface {
 	// Match tells if the token has the form of this kind.
 	Match(token string) bool
 	// Authenticate returns the principal, or an *Error with the code
-	// unauthorized.
+	// unauthorized. For a valid token above its request limit, it
+	// returns an *Error with the code rate_limited.
 	Authenticate(ctx context.Context, token string) (*Principal, error)
 }
 

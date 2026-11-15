@@ -28,12 +28,12 @@
 
 ## 5. API and render limits
 
-- [ ] 5.1 Add the code `rate_limited` with status 429 to `internal/api`, with the `Retry-After` header. Verify with a test that the error body and the header are correct.
-- [ ] 5.2 Write a failing test in `internal/app` with `limits.api_per_minute = 5`: request 6 of a scoped token gets status 429, and a request of the owner token gets status 200.
-- [ ] 5.3 Add the limit to `api.Auth`, after the token check. Verify that the test of 5.2 passes and that `GET /healthz` has no limit.
-- [ ] 5.4 Write a failing test in `internal/app` with `limits.render_per_minute = 2`: the render of a third page gets status 429, and a second request for the first page gets status 200.
-- [ ] 5.5 Add the limit to `Renderer.image`, after the cache miss. Verify that the test of 5.4 passes.
-- [ ] 5.6 Verify with a test that `limits.api_per_minute = -1` accepts 1000 requests.
+- [x] 5.1 Add the code `rate_limited` with status 429 to `internal/api`, with the `Retry-After` header. Verify with a test that the error body and the header are correct.
+- [x] 5.2 Write a failing test in `internal/app` with `limits.api_per_minute = 5`: request 6 of a scoped token gets status 429, and a request of the owner token gets status 200.
+- [x] 5.3 Add the limit to `api.Auth`, after the token check. Verify that the test of 5.2 passes and that `GET /healthz` has no limit.
+- [x] 5.4 Write a failing test in `internal/app` with `limits.render_per_minute = 2`: the render of a third page gets status 429, and a second request for the first page gets status 200.
+- [x] 5.5 Add the limit to `Renderer.image`, after the cache miss. Verify that the test of 5.4 passes.
+- [x] 5.6 Verify with a test that `limits.api_per_minute = -1` accepts 1000 requests.
 
 ## 6. Client
 
