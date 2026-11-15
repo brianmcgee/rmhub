@@ -11,6 +11,8 @@ import (
 	"github.com/klippa-app/go-pdfium/requests"
 	"github.com/klippa-app/go-pdfium/webassembly"
 	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/experimental"
 )
 
 // PDF renders PDF pages with PDFium in WebAssembly. It needs no cgo.
@@ -21,12 +23,26 @@ type PDF struct {
 // NewPDF starts a pool of PDFium instances with at most n instances.
 // The instances get no file system.
 func NewPDF(ctx context.Context, n int) (*PDF, error) {
+	return newPDF(ctx, n, pdfMemoryPages)
+}
+
+// pdfMemoryPages is the memory limit of one PDFium instance in
+// WebAssembly pages of 64 KiB: 1 GiB. Without a limit, one PDF can make
+// an instance use 4 GiB.
+const pdfMemoryPages = 1 << 30 >> 16
+
+func newPDF(ctx context.Context, n int, memoryPages uint32) (*PDF, error) {
 	pool, err := webassembly.Init(webassembly.Config{
 		Context:  ctx,
 		MinIdle:  0,
 		MaxIdle:  n,
 		MaxTotal: n,
 		FSConfig: wazero.NewFSConfig(),
+		// PDFium needs the exception handling feature, as in the
+		// default configuration of go-pdfium.
+		RuntimeConfig: wazero.NewRuntimeConfig().
+			WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesExceptionHandling).
+			WithMemoryLimitPages(memoryPages),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("start PDFium: %w", err)
