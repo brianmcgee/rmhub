@@ -50,6 +50,8 @@ conditional write. A backend that accepts the write stops the server.
 | `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
 | `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
 | `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
+| `render.cache_dir` | `$XDG_CACHE_HOME/rmhub/render` | Directory of the page render cache. Without `XDG_CACHE_HOME`, `~/.cache` is used. |
+| `render.cache_max_bytes` | `1073741824` | Maximum size of the render cache, in bytes. The oldest files are deleted first. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
