@@ -190,37 +190,39 @@ func parseV6(data []byte) (*Rm, error) {
 
 		blockLength, err := r.readUint32()
 		if err != nil {
-			break
+			return nil, fmt.Errorf("v6: block at byte %d: %w", blockStart, err)
 		}
-
-		if blockStart+4+int(blockLength) > len(data) {
-			break
+		if blockStart+8+int(blockLength) > len(data) {
+			return nil, fmt.Errorf("v6: block at byte %d: the block is longer than the file", blockStart)
 		}
 
 		r.pos++ // unknown
 		r.pos++ // minVersion
-		currentVersion, err := r.readUint8()
-		if err != nil {
-			break
-		}
-		blockType, err := r.readUint8()
-		if err != nil {
-			break
-		}
+		currentVersion, _ := r.readUint8()
+		blockType, _ := r.readUint8()
 
 		blockEnd := r.pos + int(blockLength)
 
 		switch blockType {
 		case blockTypeLineItem:
 			line, err := parseV6LineBlock(r, currentVersion, blockEnd)
-			if err == nil && line != nil {
+			if err != nil {
+				return nil, fmt.Errorf("v6: line block at byte %d: %w", blockStart, err)
+			}
+			if line != nil {
 				lines = append(lines, *line)
 			}
 		case blockTypeGlyphItem:
 			hl, err := parseV6GlyphBlock(r, blockEnd)
-			if err == nil && hl != nil {
+			if err != nil {
+				return nil, fmt.Errorf("v6: glyph block at byte %d: %w", blockStart, err)
+			}
+			if hl != nil {
 				highlights = append(highlights, *hl)
 			}
+		}
+		if r.pos > blockEnd {
+			return nil, fmt.Errorf("v6: block at byte %d: the content is longer than the block", blockStart)
 		}
 
 		r.pos = blockEnd
@@ -311,8 +313,7 @@ func parseV6LineBlock(r *v6Reader, blockVersion uint8, blockEnd int) (*Line, err
 	numPoints := int(pointsLength) / pointSize
 
 	// v6 uses a center-origin X coordinate system (X=0 at page center).
-	// Shift to match the v3/v5 left-origin system (X=0 at left edge).
-	xOffset := float32(Width) / 2
+	// The reader keeps the raw value. The renderer moves the origin.
 
 	points := make([]Point, 0, numPoints)
 	for i := 0; i < numPoints; i++ {
@@ -320,7 +321,6 @@ func parseV6LineBlock(r *v6Reader, blockVersion uint8, blockEnd int) (*Line, err
 		if err != nil {
 			return nil, err
 		}
-		x += xOffset
 		y, err := r.readFloat32()
 		if err != nil {
 			return nil, err
