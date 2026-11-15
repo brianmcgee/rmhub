@@ -1,6 +1,7 @@
 package library_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -137,5 +138,23 @@ func TestEmptyAccount(t *testing.T) {
 	s, err := library.New(e.Roots, e.Blobs).Current(e.Ctx, e.Account)
 	if err != nil || s.Generation != 0 || len(s.Children("")) != 0 {
 		t.Fatalf("empty: %+v %v", s, err)
+	}
+}
+
+// TestLargeRoot makes sure that the library reads a root index of each
+// size that the sync service accepts.
+func TestLargeRoot(t *testing.T) {
+	e := libtest.New(t)
+	// 50 long IDs give a root index of more than 5 MiB.
+	for i := range 50 {
+		e.Folder(strings.Repeat("x", 110<<10)+strconv.Itoa(i), "F"+strconv.Itoa(i), "")
+	}
+	e.Commit(4)
+	s, err := library.New(e.Roots, e.Blobs).Current(e.Ctx, e.Account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(s.Children("")); n != 50 {
+		t.Fatalf("%d entries, want 50", n)
 	}
 }

@@ -37,7 +37,7 @@ const (
 const Trash = "trash"
 
 const (
-	// maxIndex is the maximum size of an index blob.
+	// maxIndex is the maximum size of a document index blob.
 	maxIndex = 4 << 20
 	// maxMeta is the maximum size of a .metadata or .content blob.
 	maxMeta = 4 << 20
@@ -227,7 +227,7 @@ func (b *Builder) Build(ctx context.Context, account string, e rootlog.Entry, pr
 	if err != nil {
 		return nil, err
 	}
-	raw, err := b.read(ctx, ns, e.Hash, maxIndex)
+	raw, err := b.read(ctx, ns, e.Hash, hashtree.MaxRootSize)
 	if err != nil {
 		return nil, fmt.Errorf("root index %s: %w", e.Hash, err)
 	}
