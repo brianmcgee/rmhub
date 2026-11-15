@@ -35,6 +35,19 @@ func RandomHex(n int) string {
 // NewAccountID returns a new random account ID.
 func NewAccountID() string { return Random(AccountIDLen) }
 
+// UUID returns a new random UUID (version 4) in lowercase text form. The
+// tablet uses this form for document IDs.
+func UUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("ids: crypto/rand failed: " + err.Error())
+	}
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	h := hex.EncodeToString(b[:])
+	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
 // IsBase32 tells if s has exactly n characters from a-z and 2-7.
 func IsBase32(s string, n int) bool {
 	if len(s) != n {
