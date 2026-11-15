@@ -13,6 +13,7 @@ import (
 	"github.com/brianmcgee/rmhub/internal/grants"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/pairing"
+	"github.com/brianmcgee/rmhub/internal/ratelimit"
 	"github.com/brianmcgee/rmhub/internal/tokens"
 )
 
@@ -27,15 +28,23 @@ type Service struct {
 	// Admin checks the admin token. Nil means that no admin token is
 	// configured, and each admin request gets status 401.
 	Admin *tokens.Admin
+	// Limit limits the requests of each token. Nil means no limit.
+	Limit *ratelimit.Limiter
 	Log   *slog.Logger
 }
 
 // Kinds returns the token kinds of the service.
 func (s *Service) Kinds() []TokenKind {
-	return []TokenKind{adminKind{s.Admin}, ownerKind{s.Tokens}}
+	return []TokenKind{adminKind{s.Admin, s.Limit}, ownerKind{s.Tokens, s.Limit}}
 }
 
-type adminKind struct{ admin *tokens.Admin }
+// requestsOfToken names the request limit in the error message.
+const requestsOfToken = "API requests of this token"
+
+type adminKind struct {
+	admin *tokens.Admin
+	limit *ratelimit.Limiter
+}
 
 func (adminKind) Match(tok string) bool { return tokens.IsAdmin(tok) }
 
@@ -43,10 +52,17 @@ func (k adminKind) Authenticate(_ context.Context, tok string) (*Principal, erro
 	if k.admin == nil || !k.admin.Check(tok) {
 		return nil, Errorf(CodeUnauthorized, "the token is not valid")
 	}
+	// The admin token has no ID. A token ID cannot be this key.
+	if err := take(k.limit, "admin", requestsOfToken); err != nil {
+		return nil, err
+	}
 	return &Principal{Admin: true}, nil
 }
 
-type ownerKind struct{ tokens *tokens.Store }
+type ownerKind struct {
+	tokens *tokens.Store
+	limit  *ratelimit.Limiter
+}
 
 func (ownerKind) Match(tok string) bool {
 	_, _, _, ok := tokens.Parse(tok)
@@ -59,6 +75,13 @@ func (k ownerKind) Authenticate(ctx context.Context, tok string) (*Principal, er
 		return nil, Errorf(CodeUnauthorized, "the token is not valid, was revoked or expired")
 	}
 	if err != nil {
+		return nil, err
+	}
+	// The limit comes after the token check, so that a request with a
+	// token that is not valid cannot use the bucket of a valid token.
+	// The key is the ID of the token itself: a child token does not
+	// use the bucket of its parent.
+	if err := take(k.limit, acct+"/"+chain[0].ID, requestsOfToken); err != nil {
 		return nil, err
 	}
 	return &Principal{Account: acct, TokenID: chain[0].ID, Chain: chain}, nil

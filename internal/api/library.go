@@ -356,7 +356,7 @@ func (l *Library) pdfPages(ctx context.Context, account string, d *library.Doc) 
 		return []pages.Page{}, nil
 	}
 	key := rendercache.Key(account, strconv.Itoa(render.Version), "pagecount", f.Hash)
-	b, err := l.Render.image(ctx, key, func(ctx context.Context) ([]byte, error) {
+	b, err := l.Render.image(ctx, account, key, func(ctx context.Context) ([]byte, error) {
 		data, err := l.blob(ctx, mustNS(account), f.Hash, d.ID)
 		if err != nil {
 			return nil, err

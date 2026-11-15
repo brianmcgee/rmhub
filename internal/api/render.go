@@ -16,6 +16,7 @@ import (
 
 	"github.com/brianmcgee/rmhub/internal/blob"
 	"github.com/brianmcgee/rmhub/internal/library"
+	"github.com/brianmcgee/rmhub/internal/ratelimit"
 	"github.com/brianmcgee/rmhub/internal/render"
 	"github.com/brianmcgee/rmhub/internal/rendercache"
 )
@@ -33,6 +34,8 @@ const (
 type Renderer struct {
 	Cache *rendercache.Cache
 	Log   *slog.Logger
+	// Limit limits the renders of each account. Nil means no limit.
+	Limit *ratelimit.Limiter
 	// Renders is the number of renders since the start.
 	Renders atomic.Int64
 
@@ -66,14 +69,19 @@ func (r *Renderer) Close() error {
 }
 
 // image returns the cached result with the key, or runs do and keeps its
-// result. Parallel calls with one key run do once.
-func (r *Renderer) image(ctx context.Context, key string, do func(context.Context) ([]byte, error)) ([]byte, error) {
+// result. Parallel calls with one key run do once. Each run of do takes
+// one unit from the render limit of the account; a cached result takes
+// none.
+func (r *Renderer) image(ctx context.Context, account, key string, do func(context.Context) ([]byte, error)) ([]byte, error) {
 	if b, ok := r.Cache.Get(key); ok {
 		return b, nil
 	}
 	v, err, _ := r.group.Do(key, func() (any, error) {
 		if b, ok := r.Cache.Get(key); ok {
 			return b, nil
+		}
+		if err := take(r.Limit, account, "page renders of this account"); err != nil {
+			return nil, err
 		}
 		// The result goes to each caller, so the first caller must not
 		// cancel it.
@@ -163,7 +171,7 @@ func (l *Library) renderPage(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	ns := mustNS(v.s.Account)
-	b, err := l.Render.image(r.Context(), key, func(ctx context.Context) ([]byte, error) {
+	b, err := l.Render.image(r.Context(), v.s.Account, key, func(ctx context.Context) ([]byte, error) {
 		var rm []byte
 		if rmHash != "" {
 			if rm, err = l.blobMax(ctx, ns, rmHash, d.ID, maxPageFile); err != nil {

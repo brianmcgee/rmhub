@@ -47,6 +47,7 @@ conditional write. A backend that accepts the write stops the server.
 | `listen.api.address` | `127.0.0.1:8081` | Address of the API listener. |
 | `listen.<name>.tls_cert_file` | | TLS certificate. Set it with `tls_key_file`, or set neither for plain HTTP. |
 | `listen.<name>.tls_key_file` | | TLS private key. |
+| `listen.<name>.trusted_proxies` | `[]` | Addresses and CIDR networks of the reverse proxies in front of the listener. The server reads the client address from `X-Forwarded-For` only if the connection comes from one of them. |
 | `admin.token_file` | | File with the admin token. Without it, each admin request gets status 401. |
 | `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
 | `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
@@ -54,6 +55,9 @@ conditional write. A backend that accepts the write stops the server.
 | `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
 | `render.cache_dir` | `$XDG_CACHE_HOME/rmhub/render` | Directory of the page render cache. Without `XDG_CACHE_HOME`, `~/.cache` is used. |
 | `render.cache_max_bytes` | `1073741824` | Maximum size of the render cache, in bytes. The oldest files are deleted first. |
+| `limits.pairing_per_minute` | `10` | Maximum number of pairing attempts of one client address in one minute. `-1` means no limit. |
+| `limits.api_per_minute` | `600` | Maximum number of API requests of one token in one minute. `-1` means no limit. |
+| `limits.render_per_minute` | `60` | Maximum number of page renders of one account in one minute. A page from the render cache does not count. `-1` means no limit. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and
@@ -87,6 +91,36 @@ address = "127.0.0.1:8080"
 [listen.api]
 address = "127.0.0.1:8081"
 ```
+
+### Request limits
+
+The server has three request limits. Each limit is a number of requests
+in one minute. A client can use the full number at one time; after
+that, the number fills again at a constant rate.
+
+| Key | Default | Limit |
+|---|---|---|
+| `limits.pairing_per_minute` | `10` | Pairing attempts of one client address. Each attempt counts, with a valid code or not. All addresses of one IPv6 /64 network count as one address. |
+| `limits.api_per_minute` | `600` | API requests of one token. A scoped token and its parent token have separate limits. |
+| `limits.render_per_minute` | `60` | Page renders of one account, for all its tokens together. A page that is in the render cache does not count. |
+
+Above a limit, the server answers with status 429 and a `Retry-After`
+header with the wait time in seconds. The API gives the error code
+`rate_limited`, and the client exits with code 6. The request did
+nothing.
+
+The value `-1` turns a limit off. The value `0` is an error.
+
+There is no limit on the sync requests of a paired tablet, and no limit
+on requests with a token that is not valid. Use the reverse proxy to
+stop a flood of such requests.
+
+The server keeps the counts in memory. A restart sets them to zero.
+If two server processes use one state store, each process has its own
+counts, so a client can use each limit two times.
+
+Behind a reverse proxy, set `listen.tablet.trusted_proxies`; see
+"Deploy on NixOS". Without it, all clients share one pairing limit.
 
 ## First run
 
@@ -255,6 +289,7 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_read_timeout 1h;
@@ -265,6 +300,22 @@ server {
 
 With this setup, the `upstream` of the proxy on the tablet is
 `https://rmhub.example.org` (port 443).
+
+Behind a reverse proxy, rmhub sees only the address of the proxy. Then
+all clients share one bucket of the pairing limit (see "Request
+limits"). The `X-Forwarded-For` line above gives the client address to
+rmhub. Tell rmhub to trust that header from the proxy:
+
+```toml
+[listen.tablet]
+address = "127.0.0.1:8080"
+trusted_proxies = ["127.0.0.1"]
+```
+
+List only the addresses of your own proxies. rmhub believes the
+`X-Forwarded-For` header of each address in the list. With a wrong
+entry, for example `0.0.0.0/0`, each client can choose its own address,
+and the pairing limit has no effect.
 
 ## Switch from rmfakecloud
 
@@ -371,7 +422,7 @@ token = "rmh_…"
 Each command prints text by default and one JSON value with `--json`.
 Errors go to standard error. The exit codes are: 0 success, 1 unexpected
 error, 2 usage or setting error, 3 status 401 or 403, 4 status 404, 5
-status 409 or 412. `rmhub <command> --help` shows the options, the JSON
+status 409 or 412, 6 status 429 (see "Request limits"). `rmhub <command> --help` shows the options, the JSON
 output form and an example.
 
 ### Library and agents

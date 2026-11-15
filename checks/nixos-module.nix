@@ -1,7 +1,9 @@
 # Starts the NixOS module with examples/nixos.nix in a VM. rmapi pairs
 # through TLS with a self-signed CA, uploads a PDF, and lists it again
 # after a service restart. The API renders the PDF page under the systemd
-# hardening of the module.
+# hardening of the module. An nginx reverse proxy in front of the tablet
+# listener checks that the pairing limit uses the client address that
+# the proxy gives.
 { pkgs, flake, ... }:
 let
   # A self-signed CA and a certificate for rmhub.test. The key is in the
@@ -67,7 +69,42 @@ pkgs.testers.runNixOSTest {
           tls-cert = lib.mkForce "${certs}/cert.pem";
           tls-key = lib.mkForce "${certs}/key.pem";
         };
+        settings.listen.tablet.trusted_proxies = [ "127.0.0.1" ];
       };
+
+      # The reverse proxy of the deployment guide. Here its upstream has
+      # TLS, because examples/nixos.nix puts TLS on the tablet listener.
+      services.nginx = {
+        enable = true;
+        virtualHosts."rmhub.test" = {
+          onlySSL = true;
+          sslCertificate = "${certs}/cert.pem";
+          sslCertificateKey = "${certs}/key.pem";
+          extraConfig = "client_max_body_size 256m;";
+          locations."/" = {
+            proxyPass = "https://127.0.0.1:8443";
+            proxyWebsockets = true;
+            extraConfig = ''
+              proxy_set_header Host $host;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_read_timeout 1h;
+              proxy_request_buffering off;
+            '';
+          };
+        };
+      };
+
+      # Two client addresses for the test of the pairing limit.
+      networking.interfaces.lo.ipv4.addresses = [
+        {
+          address = "192.0.2.10";
+          prefixLength = 32;
+        }
+        {
+          address = "192.0.2.11";
+          prefixLength = 32;
+        }
+      ];
 
       # A fixed admin token for the test. A real host gets it from a
       # secret store.
@@ -113,5 +150,30 @@ pkgs.testers.runNixOSTest {
     machine.wait_until_succeeds("curl -sf https://rmhub.test:8443/healthz")
     assert "paper" in machine.succeed(f"{rmapi} ls /")
     machine.fail("grep -r rmh_admin_ywgfq67 /nix/store/*rmhub.toml")
+
+    # A pairing through the reverse proxy.
+    machine.wait_for_unit("nginx.service")
+    machine.wait_until_succeeds("curl -sf https://rmhub.test/healthz")
+    code = machine.succeed(f"{user} rmhub pair --json | jq -r .code").strip()
+    machine.succeed("mkdir /root/proxy")
+    machine.succeed(f"echo {code} | HOME=/root/proxy RMAPI_HOST=https://rmhub.test rmapi ls")
+
+    # The pairing limit is for each client address behind the proxy. The
+    # X-Forwarded-For value of the client must not give it a new bucket.
+    def pair(source, forwarded):
+        return machine.succeed(
+            f"curl -s -o /dev/null -w '%{{http_code}}' --interface {source} -H 'X-Forwarded-For: {forwarded}'"
+            " -H 'Content-Type: application/json'"
+            " -d '{\"code\":\"zzzzzzzz\",\"deviceDesc\":\"x\",\"deviceID\":\"x\"}'"
+            " https://rmhub.test/token/json/2/device/new"
+        ).strip()
+
+    for i in range(10):
+        status = pair("192.0.2.10", f"203.0.113.{i}")
+        assert status == "400", f"attempt {i + 1}: status {status}, want 400"
+    status = pair("192.0.2.10", "203.0.113.99")
+    assert status == "429", f"attempt 11: status {status}, want 429"
+    status = pair("192.0.2.11", "203.0.113.99")
+    assert status == "400", f"second address: status {status}, want 400"
   '';
 }

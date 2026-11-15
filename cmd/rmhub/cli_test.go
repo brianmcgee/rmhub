@@ -7,9 +7,11 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -57,10 +59,12 @@ type testSrv struct {
 	srv   *httptest.Server
 }
 
-func newTestServer(t *testing.T) *testSrv {
+// newTestServer starts a server. The text extra is more TOML
+// configuration.
+func newTestServer(t *testing.T, extra ...string) *testSrv {
 	t.Helper()
 	dir := t.TempDir()
-	cfg, err := config.Parse("data_dir = \"" + dir + "\"")
+	cfg, err := config.Parse("data_dir = \"" + dir + "\"\n" + strings.Join(extra, "\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,4 +341,42 @@ func allCommands(c *cobra.Command) []*cobra.Command {
 		out = append(out, allCommands(sub)...)
 	}
 	return out
+}
+
+func TestRateLimitExitCode(t *testing.T) {
+	ts := newTestServer(t, "[limits]\napi_per_minute = 1")
+	env := map[string]string{"RMHUB_URL": ts.url, "RMHUB_TOKEN": ts.admin}
+	if r := rmhub(env, "admin", "user", "list"); r.code != exitOK {
+		t.Fatalf("first command: code %d, %s", r.code, r.stderr)
+	}
+	r := rmhub(env, "admin", "user", "list")
+	if r.code != 6 {
+		t.Fatalf("second command: code %d, want 6; %s", r.code, r.stderr)
+	}
+	if !regexp.MustCompile(`rate_limited.*try again in (\d+) seconds`).MatchString(r.stderr) {
+		t.Errorf("stderr %q does not give the wait time", r.stderr)
+	}
+
+	// The seconds come from the Retry-After header. The client does not
+	// send the request again.
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Retry-After", "7")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"code":"rate_limited","message":"too many API requests of this token"}}`)
+	}))
+	defer srv.Close()
+	env["RMHUB_URL"] = srv.URL
+	for _, args := range [][]string{{"ls"}, {"watch"}} {
+		requests = 0
+		r := rmhub(env, args...)
+		if r.code != 6 || !strings.Contains(r.stderr, "try again in 7 seconds") {
+			t.Errorf("%v: code %d, stderr %q", args, r.code, r.stderr)
+		}
+		if requests != 1 {
+			t.Errorf("%v: %d requests, want 1", args, requests)
+		}
+	}
 }

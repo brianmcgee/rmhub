@@ -8,12 +8,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/brianmcgee/rmhub/internal/accounts"
 	"github.com/brianmcgee/rmhub/internal/devices"
 	"github.com/brianmcgee/rmhub/internal/pairing"
+	"github.com/brianmcgee/rmhub/internal/ratelimit"
 )
 
 // maxBody is the maximum size of a JSON request body.
@@ -26,6 +28,11 @@ type Service struct {
 	Pairing  *pairing.Store
 	Issuer   *Issuer
 	Log      *slog.Logger
+	// PairLimit limits the pairing attempts of each client address. Nil
+	// means no limit.
+	PairLimit *ratelimit.Limiter
+	// Proxies are the trusted proxies of the tablet listener.
+	Proxies []netip.Prefix
 	// Now is the clock. Tests set it.
 	Now func() time.Time
 }
@@ -82,6 +89,13 @@ type deviceNewRequest struct {
 }
 
 func (s *Service) deviceNew(w http.ResponseWriter, r *http.Request) {
+	// Each attempt counts, with a valid code or not: the limit makes a
+	// search for a code too slow to succeed.
+	if ok, wait := s.PairLimit.Allow(ratelimit.ClientKey(r, s.Proxies)); !ok {
+		w.Header().Set("Retry-After", ratelimit.RetryAfter(wait))
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
 	var req deviceNewRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxBody)).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)

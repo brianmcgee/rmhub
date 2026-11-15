@@ -75,7 +75,8 @@ $XDG_CONFIG_HOME/rmhub/client.toml, in that order. It reads the token
 from --token, RMHUB_TOKEN or token in client.toml, in that order.
 
 Exit codes: 0 success, 1 unexpected error, 2 usage or setting error,
-3 status 401 or 403, 4 status 404, 5 status 409 or 412.`,
+3 status 401 or 403, 4 status 404, 5 status 409 or 412, 6 status 429
+(too many requests; the error message gives the wait time).`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -26,7 +27,27 @@ type Config struct {
 	Tablet  TabletConfig `toml:"tablet"`
 	API     APIConfig    `toml:"api"`
 	Render  RenderConfig `toml:"render"`
+	Limits  LimitsConfig `toml:"limits"`
 }
+
+// LimitsConfig has the request limits. Each value is a number of
+// requests in one minute. The value -1 turns the limit off.
+type LimitsConfig struct {
+	// PairingPerMinute is the limit of pairing attempts of one client
+	// address.
+	PairingPerMinute int `toml:"pairing_per_minute"`
+	// APIPerMinute is the limit of API requests of one token.
+	APIPerMinute int `toml:"api_per_minute"`
+	// RenderPerMinute is the limit of page renders of one account.
+	RenderPerMinute int `toml:"render_per_minute"`
+}
+
+// Defaults of the keys of [limits].
+const (
+	DefaultPairingPerMinute = 10
+	DefaultAPIPerMinute     = 600
+	DefaultRenderPerMinute  = 60
+)
 
 // RenderConfig has the settings of the page render cache.
 type RenderConfig struct {
@@ -95,6 +116,27 @@ type Listener struct {
 	Address     string `toml:"address"`
 	TLSCertFile string `toml:"tls_cert_file"`
 	TLSKeyFile  string `toml:"tls_key_file"`
+	// TrustedProxies has the addresses and the CIDR networks of the
+	// reverse proxies. The server reads the client address from
+	// X-Forwarded-For only if the connection comes from one of them.
+	TrustedProxies []string `toml:"trusted_proxies"`
+}
+
+// Proxies returns TrustedProxies as networks.
+func (l Listener) Proxies() ([]netip.Prefix, error) {
+	out := make([]netip.Prefix, 0, len(l.TrustedProxies))
+	for _, s := range l.TrustedProxies {
+		if a, err := netip.ParseAddr(s); err == nil {
+			out = append(out, netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()))
+			continue
+		}
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, fmt.Errorf("value %q must be an IP address or a CIDR network", s)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }
 
 // DefaultPath returns $XDG_CONFIG_HOME/rmhub/config.toml.
@@ -138,6 +180,14 @@ func Parse(text string) (*Config, error) {
 	if err := checkUndecoded(md.Undecoded()); err != nil {
 		return nil, err
 	}
+	// The value 0 means "not set" after the decode, so find a 0 in the
+	// text here. An operator who writes 0 to turn a limit off must get
+	// an error and not the default.
+	for _, l := range cfg.Limits.keys() {
+		if *l.value < -1 || *l.value == 0 && md.IsDefined("limits", l.name) {
+			return nil, fmt.Errorf("limits.%s: the value must be positive, or -1 for no limit", l.name)
+		}
+	}
 	cfg.setDefaults()
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -161,7 +211,26 @@ func checkUndecoded(keys []toml.Key) error {
 	return fmt.Errorf("unknown configuration key %s", strings.Join(names, ", "))
 }
 
+type limitKey struct {
+	name  string
+	value *int
+	def   int
+}
+
+func (l *LimitsConfig) keys() []limitKey {
+	return []limitKey{
+		{"pairing_per_minute", &l.PairingPerMinute, DefaultPairingPerMinute},
+		{"api_per_minute", &l.APIPerMinute, DefaultAPIPerMinute},
+		{"render_per_minute", &l.RenderPerMinute, DefaultRenderPerMinute},
+	}
+}
+
 func (c *Config) setDefaults() {
+	for _, l := range c.Limits.keys() {
+		if *l.value == 0 {
+			*l.value = l.def
+		}
+	}
 	if c.DataDir == "" {
 		c.DataDir = filepath.Join(xdg.DataHome(), "rmhub")
 	}
@@ -230,6 +299,9 @@ func (c *Config) validate() error {
 	for name, l := range map[string]Listener{"listen.tablet": c.Listen.Tablet, "listen.api": c.Listen.API} {
 		if (l.TLSCertFile == "") != (l.TLSKeyFile == "") {
 			return fmt.Errorf("%s: set both tls_cert_file and tls_key_file, or neither", name)
+		}
+		if _, err := l.Proxies(); err != nil {
+			return fmt.Errorf("%s.trusted_proxies: %w", name, err)
 		}
 	}
 	if c.Listen.Tablet.Address == c.Listen.API.Address {

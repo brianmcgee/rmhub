@@ -32,7 +32,7 @@ func TestRenderOnce(t *testing.T) {
 	results := make([][]byte, 2)
 	for i := range results {
 		wg.Go(func() {
-			b, err := r.image(context.Background(), "k", do)
+			b, err := r.image(context.Background(), "acct", "k", do)
 			if err != nil {
 				t.Error(err)
 			}
