@@ -3,8 +3,10 @@ package render
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image/color"
 	"testing"
+	"time"
 
 	"github.com/brianmcgee/rmhub/internal/render/rendertest"
 	"github.com/brianmcgee/rmhub/internal/rmfile"
@@ -90,6 +92,25 @@ func TestPDFMemoryLimit(t *testing.T) {
 	}
 	if _, err := p.Render(ctx, rendertest.PDF(), 1, nil, 200); err != nil {
 		t.Fatalf("render after the refused render: %v", err)
+	}
+}
+
+// TestPDFTimeLimit makes sure that a render that takes longer than the
+// time limit gives ErrTimeout, and that the pool renders after it.
+func TestPDFTimeLimit(t *testing.T) {
+	ctx := context.Background()
+	p, err := NewPDF(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	p.timeout = time.Millisecond
+	if _, err := p.Render(ctx, rendertest.PDF(), 1, nil, 4096); !errors.Is(err, ErrTimeout) {
+		t.Fatalf("render with a time limit of 1 ms: error %v, want ErrTimeout", err)
+	}
+	p.timeout = pdfTimeout
+	if _, err := p.Render(ctx, rendertest.PDF(), 1, nil, 200); err != nil {
+		t.Fatalf("render after the stopped render: %v", err)
 	}
 }
 

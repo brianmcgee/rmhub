@@ -197,6 +197,9 @@ func (l *Library) renderPage(w http.ResponseWriter, r *http.Request) error {
 	if errors.Is(err, render.ErrTooLarge) {
 		return Errorf(CodeBadRequest, "page %d of entry %s is too large to render with the width %d; request a smaller width", number, d.ID, width)
 	}
+	if errors.Is(err, render.ErrTimeout) {
+		return Errorf(CodeConflict, "the PDF file of entry %s needs too much time to render", d.ID)
+	}
 	if err != nil {
 		return fmt.Errorf("render page %d of document %s: %w", number, d.ID, err)
 	}

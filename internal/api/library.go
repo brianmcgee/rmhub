@@ -371,6 +371,9 @@ func (l *Library) pdfPages(ctx context.Context, account string, d *library.Doc) 
 		}
 		return []byte(strconv.Itoa(n)), nil
 	})
+	if errors.Is(err, render.ErrTimeout) {
+		return nil, Errorf(CodeConflict, "the PDF file of entry %s needs too much time to read", d.ID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("count the pages of the PDF of document %s: %w", d.ID, err)
 	}
