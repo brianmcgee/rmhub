@@ -75,3 +75,25 @@ func TestKey(t *testing.T) {
 		t.Fatal("two different part lists give the same key")
 	}
 }
+
+// TestNewRemovesStaleFiles makes sure that New removes an old file that
+// is not complete, and keeps the results.
+func TestNewRemovesStaleFiles(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-48 * time.Hour)
+	for _, name := range []string{".tmp-123", "result"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := rendercache.New(dir, 1000); err != nil {
+		t.Fatal(err)
+	}
+	if _, names := size(t, dir); len(names) != 1 || names[0] != "result" {
+		t.Fatalf("files after New: %v", names)
+	}
+}

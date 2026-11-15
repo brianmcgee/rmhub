@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -171,5 +172,41 @@ func TestIdleConnectionCloses(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(b), "HTTP/1.1 200") {
 		t.Fatalf("answer: %q", b)
+	}
+}
+
+// TestOpenStoresRemovesStaleFiles makes sure that the start removes old
+// temporary files of a process that stopped, and keeps new files.
+func TestOpenStoresRemovesStaleFiles(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Parse(`data_dir = "` + dir + `"` + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := server.OpenStores(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	old := time.Now().Add(-48 * time.Hour)
+	stale, fresh := filepath.Join(st.TempDir, "put-stale"), filepath.Join(st.TempDir, "put-fresh")
+	for _, p := range []string{stale, fresh} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	st, err = server.OpenStores(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("the stale file stays")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Error("the new file is gone")
 	}
 }

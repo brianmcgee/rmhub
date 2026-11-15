@@ -11,6 +11,7 @@ import (
 	blobs3 "github.com/brianmcgee/rmhub/internal/blob/s3"
 	"github.com/brianmcgee/rmhub/internal/config"
 	"github.com/brianmcgee/rmhub/internal/s3conn"
+	"github.com/brianmcgee/rmhub/internal/stale"
 	"github.com/brianmcgee/rmhub/internal/state"
 	states3 "github.com/brianmcgee/rmhub/internal/state/s3"
 	"github.com/brianmcgee/rmhub/internal/state/sqlite"
@@ -54,6 +55,10 @@ func OpenStores(ctx context.Context, cfg *config.Config) (*Stores, error) {
 			return nil, fmt.Errorf("blob.s3: %w", err)
 		}
 		st.Blob = blobs3.New(c, tmp)
+	}
+	// A process that stopped during a request can leave temporary files.
+	for _, dir := range []string{tmp, st.TempDir} {
+		stale.Remove(dir, stale.Age, "get-", "put-", "upload-", "rmhub-blob-")
 	}
 
 	switch cfg.State.Backend {
