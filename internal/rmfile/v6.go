@@ -382,12 +382,37 @@ func parseV6LineBlock(r *v6Reader, blockVersion uint8, blockEnd int) (*Line, err
 
 	r.pos = pointsEnd
 
-	// Skip remaining fields (timestamp, move_id)
+	// Remaining fields: timestamp (tag 6), optional move_id (tag 7) and
+	// optional RGBA color (tag 8, firmware 3.6+).
+	var rgba *[4]uint8
+	if r.pos < valueEnd && r.checkTag(6, tagID) {
+		if err := r.readCrdtId(); err != nil {
+			return nil, err
+		}
+		if r.pos < valueEnd && r.checkTag(7, tagID) {
+			if err := r.readCrdtId(); err != nil {
+				return nil, err
+			}
+		}
+		if r.pos < valueEnd && r.checkTag(8, tagByte4) {
+			packed, err := r.readUint32()
+			if err != nil {
+				return nil, err
+			}
+			rgba = &[4]uint8{
+				uint8((packed >> 16) & 0xFF),
+				uint8((packed >> 8) & 0xFF),
+				uint8(packed & 0xFF),
+				uint8((packed >> 24) & 0xFF),
+			}
+		}
+	}
 	r.pos = valueEnd
 
 	line := &Line{
 		BrushType:  BrushType(pen),
 		BrushColor: BrushColor(color),
+		ColorRGBA:  rgba,
 		BrushSize:  BrushSize(thicknessScale),
 		Points:     points,
 	}

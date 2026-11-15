@@ -1,84 +1,18 @@
-package rmfile
+package rmfile_test
 
 import (
-	"encoding/binary"
-	"math"
 	"os"
 	"testing"
+
+	. "github.com/brianmcgee/rmhub/internal/rmfile"
+	"github.com/brianmcgee/rmhub/internal/rmfile/rmtest"
 )
 
-// v6Stroke is a stroke for the test encoder.
-type v6Stroke struct {
-	deleted uint32
-	pen     uint32
-	color   uint32
-	points  [][2]float32
-}
-
-// encodeV6 writes a v6 file with one line block for each stroke. It uses
-// point version 2, as reMarkable OS 3 does.
-func encodeV6(strokes ...v6Stroke) []byte {
-	out := []byte(HeaderV6)
-	for i, s := range strokes {
-		var b []byte
-		varuint := func(v uint32) {
-			for v >= 0x80 {
-				b = append(b, byte(v)|0x80)
-				v >>= 7
-			}
-			b = append(b, byte(v))
-		}
-		tag := func(idx, typ uint32) { varuint(idx<<4 | typ) }
-		u32 := func(v uint32) { b = binary.LittleEndian.AppendUint32(b, v) }
-		for idx := uint32(1); idx <= 4; idx++ {
-			tag(idx, tagID)
-			b = append(b, 0)
-			varuint(uint32(i + 1))
-		}
-		tag(5, tagByte4)
-		u32(s.deleted)
-		if s.deleted == 0 {
-			var v []byte
-			v = append(v, lineItemType)
-			vt := func(idx, typ uint32) {
-				x := idx<<4 | typ
-				for x >= 0x80 {
-					v = append(v, byte(x)|0x80)
-					x >>= 7
-				}
-				v = append(v, byte(x))
-			}
-			vt(1, tagByte4)
-			v = binary.LittleEndian.AppendUint32(v, s.pen)
-			vt(2, tagByte4)
-			v = binary.LittleEndian.AppendUint32(v, s.color)
-			vt(3, tagByte8)
-			v = binary.LittleEndian.AppendUint64(v, math.Float64bits(2))
-			vt(4, tagByte4)
-			v = binary.LittleEndian.AppendUint32(v, 0)
-			vt(5, tagLength4)
-			v = binary.LittleEndian.AppendUint32(v, uint32(14*len(s.points)))
-			for _, p := range s.points {
-				v = binary.LittleEndian.AppendUint32(v, math.Float32bits(p[0]))
-				v = binary.LittleEndian.AppendUint32(v, math.Float32bits(p[1]))
-				v = binary.LittleEndian.AppendUint16(v, 0)  // speed
-				v = binary.LittleEndian.AppendUint16(v, 12) // width * 4
-				v = append(v, 0, 255)                       // direction, pressure
-			}
-			tag(6, tagLength4)
-			u32(uint32(len(v)))
-			b = append(b, v...)
-		}
-		out = binary.LittleEndian.AppendUint32(out, uint32(len(b)))
-		out = append(out, 0, 1, 2, blockTypeLineItem)
-		out = append(out, b...)
-	}
-	return out
-}
+func encodeV6(strokes ...rmtest.Stroke) []byte { return rmtest.File(strokes, nil) }
 
 func TestV6RawX(t *testing.T) {
 	var rm Rm
-	if err := rm.UnmarshalBinary(encodeV6(v6Stroke{pen: uint32(Fineliner), points: [][2]float32{{-500, 100}, {300, 200}}})); err != nil {
+	if err := rm.UnmarshalBinary(encodeV6(rmtest.Stroke{Pen: uint32(Fineliner), Points: []rmtest.Point{{X: -500, Y: 100, W: 3}, {X: 300, Y: 200, W: 3}}})); err != nil {
 		t.Fatal(err)
 	}
 	lines := rm.Layers[0].Lines
@@ -93,9 +27,9 @@ func TestV6RawX(t *testing.T) {
 func TestV6DeletedStroke(t *testing.T) {
 	var rm Rm
 	data := encodeV6(
-		v6Stroke{points: [][2]float32{{0, 0}}},
-		v6Stroke{deleted: 1},
-		v6Stroke{color: uint32(Red), points: [][2]float32{{1, 1}}},
+		rmtest.Stroke{Points: []rmtest.Point{{X: 0, Y: 0, W: 3}}},
+		rmtest.Stroke{Deleted: 1},
+		rmtest.Stroke{Color: uint32(Red), Points: []rmtest.Point{{X: 1, Y: 1, W: 3}}},
 	)
 	if err := rm.UnmarshalBinary(data); err != nil {
 		t.Fatal(err)
@@ -107,7 +41,7 @@ func TestV6DeletedStroke(t *testing.T) {
 }
 
 func TestV6Truncated(t *testing.T) {
-	data := encodeV6(v6Stroke{points: [][2]float32{{0, 0}, {1, 1}, {2, 2}}})
+	data := encodeV6(rmtest.Stroke{Points: []rmtest.Point{{X: 0, Y: 0, W: 3}, {X: 1, Y: 1, W: 3}, {X: 2, Y: 2, W: 3}}})
 	for _, n := range []int{len(data) - 1, len(data) - 20, HeaderLen + 2} {
 		var rm Rm
 		if err := rm.UnmarshalBinary(data[:n]); err == nil {
@@ -115,7 +49,7 @@ func TestV6Truncated(t *testing.T) {
 		}
 	}
 	// A block with bad content gives an error too.
-	bad := encodeV6(v6Stroke{points: [][2]float32{{0, 0}}})
+	bad := encodeV6(rmtest.Stroke{Points: []rmtest.Point{{X: 0, Y: 0, W: 3}}})
 	bad[HeaderLen+8] = 0x25 // tag 2 with the type byte4 instead of the ID tag 1
 	var rm Rm
 	if err := rm.UnmarshalBinary(bad); err == nil {
@@ -153,5 +87,31 @@ func TestV6Fixtures(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestV6LineColor reads the explicit color of shader strokes.
+func TestV6LineColor(t *testing.T) {
+	b, err := os.ReadFile("testdata/Color_and_tool_v3.14.4.rm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rm Rm
+	if err := rm.UnmarshalBinary(b); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, l := range rm.Layers[0].Lines {
+		if l.BrushColor == HighlightDynamic {
+			if l.ColorRGBA == nil {
+				t.Fatalf("a line with the color %d has no RGBA value", l.BrushColor)
+			}
+			n++
+		} else if l.ColorRGBA != nil {
+			t.Errorf("line with the color %d has the RGBA value %v", l.BrushColor, *l.ColorRGBA)
+		}
+	}
+	if n == 0 {
+		t.Fatal("the fixture has no line with an RGBA value")
 	}
 }

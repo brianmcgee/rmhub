@@ -109,6 +109,7 @@ const (
 	BrushV5       BrushType = 12
 	HighlighterV5 BrushType = 18
 	Calligraphy   BrushType = 9
+	Shader        BrushType = 23
 )
 
 // BrushSize represents the base brush sizes.
@@ -154,10 +155,13 @@ type Layer struct {
 type Line struct {
 	BrushType  BrushType
 	BrushColor BrushColor
-	Padding    uint32
-	Unknown    float32
-	BrushSize  BrushSize
-	Points     []Point
+	// ColorRGBA is the explicit color of a v6 line (R, G, B, A), or nil.
+	// The tablet writes it for the color HighlightDynamic.
+	ColorRGBA *[4]uint8
+	Padding   uint32
+	Unknown   float32
+	BrushSize BrushSize
+	Points    []Point
 }
 
 // A Point has coordinates.
