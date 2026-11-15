@@ -27,6 +27,19 @@ page that is too long for the requested width MUST get status 400.
 - **WHEN** a client requests page 9 of a document with 3 pages
 - **THEN** the server answers with status 404
 
+### Requirement: Render limits
+A page above the drawing work limit of the capability `page-rendering`
+MUST get status 400. A PDF above the PDF time limit of that capability
+MUST get status 409, from the render endpoint and from the page list.
+
+#### Scenario: Too much drawing work
+- **WHEN** a client requests a page whose strokes are above the drawing work limit
+- **THEN** the server answers with status 400 and a message that asks for a smaller width
+
+#### Scenario: PDF above the time limit
+- **WHEN** a client requests a page of a PDF that PDFium does not draw in 60 seconds
+- **THEN** the server answers with status 409
+
 ### Requirement: Render access
 The render endpoint MUST follow the visibility rules of the capability
 `scoped-tokens`. For a folder or an EPUB document, the endpoint MUST
