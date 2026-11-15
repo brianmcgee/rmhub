@@ -50,6 +50,29 @@ const (
 // page. It is a bad request.
 var ErrSVGWithPDF = errors.New("a page with a PDF page has no SVG output; request PNG")
 
+// ErrTooLarge is the error for a page that is too large to draw. It is
+// a bad request: a smaller width can be correct.
+var ErrTooLarge = errors.New("the page is too large to render; request a smaller width")
+
+// Limits of the page area. A page can grow to maxGrowX page widths and
+// maxGrowY page heights. A PNG image can have maxPixels pixels, which is
+// 256 MiB of memory.
+const (
+	maxGrowX  = 16
+	maxGrowY  = 256
+	maxPixels = 64 << 20
+)
+
+// finite is true if each value is a finite number.
+func finite(vs ...float64) bool {
+	for _, v := range vs {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return true
+}
+
 // Base is the PDF page under the strokes.
 type Base interface {
 	// Size returns the size of the PDF page in points.
@@ -121,8 +144,23 @@ type layout struct {
 func (l layout) w() float64 { return l.maxX - l.minX }
 func (l layout) h() float64 { return l.maxY - l.minY }
 
+// height returns the height in pixels of the image with the width
+// width. It returns ErrTooLarge if the page area or the image is larger
+// than the limits.
+func (l layout) height(width int) (int, error) {
+	if !(l.w() <= maxGrowX*PageWidth && l.h() <= maxGrowY*PageHeight) {
+		return 0, ErrTooLarge
+	}
+	h := int(l.h()*float64(width)/l.w() + 0.5)
+	if h < 1 || h > maxPixels/width {
+		return 0, ErrTooLarge
+	}
+	return h, nil
+}
+
 // newLayout returns the page area: the page of the size w × h, grown to
-// include each stroke and highlight with a margin.
+// include each stroke and highlight with a margin. It ignores a point or
+// a highlight with a value that is not finite.
 func newLayout(rm *rmfile.Rm, w, h float64) layout {
 	l := layout{maxX: w, maxY: h}
 	if rm == nil {
@@ -144,6 +182,9 @@ func newLayout(rm *rmfile.Rm, w, h float64) layout {
 			}
 			for _, p := range ln.Points {
 				x, y, r := float64(p.X)+l.dx, float64(p.Y), float64(p.Width)/2
+				if !finite(x, y, r) {
+					continue
+				}
 				if x-r < 0 || y-r < 0 || x+r > w || y+r > h {
 					grow(x-r, y-r, x+r, y+r)
 				}
@@ -154,6 +195,9 @@ func newLayout(rm *rmfile.Rm, w, h float64) layout {
 		for _, r := range hl.Rects {
 			x0, y0 := r.X+l.dx, r.Y
 			x1, y1 := x0+r.W, y0+r.H
+			if !finite(x0, y0, x1, y1) {
+				continue
+			}
 			if x0 < 0 || y0 < 0 || x1 > w || y1 > h {
 				grow(x0, y0, x1, y1)
 			}
@@ -179,7 +223,7 @@ type rect struct {
 }
 
 // shapes returns the strokes and highlights of the file in file order,
-// without erasers and empty strokes.
+// without erasers, empty strokes and values that are not finite.
 func shapes(rm *rmfile.Rm, l layout) ([]stroke, []rect) {
 	if rm == nil {
 		return nil, nil
@@ -196,7 +240,13 @@ func shapes(rm *rmfile.Rm, l layout) ([]stroke, []rect) {
 				s.color = color.RGBA{ln.ColorRGBA[0], ln.ColorRGBA[1], ln.ColorRGBA[2], 0xff}
 			}
 			for _, p := range ln.Points {
+				if !finite(float64(p.X), float64(p.Y), float64(p.Width)) {
+					continue
+				}
 				s.pts = append(s.pts, pt{float64(p.X) + ox, float64(p.Y) + oy, math.Max(float64(p.Width), 1)})
+			}
+			if len(s.pts) == 0 {
+				continue
 			}
 			ss = append(ss, s)
 		}
@@ -208,6 +258,9 @@ func shapes(rm *rmfile.Rm, l layout) ([]stroke, []rect) {
 			c = color.RGBA{hl.ColorRGBA[0], hl.ColorRGBA[1], hl.ColorRGBA[2], 0xff}
 		}
 		for _, r := range hl.Rects {
+			if !finite(r.X, r.Y, r.W, r.H) {
+				continue
+			}
 			rs = append(rs, rect{c, r.X + ox, r.Y + oy, r.W, r.H})
 		}
 	}
@@ -382,12 +435,21 @@ func Render(data []byte, base Base, format Format, width int) ([]byte, error) {
 		return renderPDF(rm, base, width)
 	}
 	l := newLayout(rm, PageWidth, PageHeight)
-	ss, rs := shapes(rm, l)
+	height, err := l.height(width)
 	if format == SVG {
+		// An SVG has no pixels, but the page area has the same limits.
+		if _, err := l.height(1); err != nil {
+			return nil, err
+		}
+		ss, rs := shapes(rm, l)
 		return writeSVG(ss, rs, l, width), nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	ss, rs := shapes(rm, l)
 	res := float64(width) / l.w()
-	img := image.NewRGBA(image.Rect(0, 0, width, int(l.h()*res+0.5)))
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
 	rasterize(img, ss, rs, res)
 	return encodePNG(img)
@@ -400,12 +462,16 @@ func renderPDF(rm *rmfile.Rm, base Base, width int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if pw <= 0 || ph <= 0 {
+	if !finite(pw, ph) || pw <= 0 || ph <= 0 {
 		return nil, fmt.Errorf("the PDF page has the size %g × %g", pw, ph)
 	}
 	l := newLayout(rm, PageWidth, PageWidth*ph/pw)
+	height, err := l.height(width)
+	if err != nil {
+		return nil, err
+	}
 	res := float64(width) / l.w()
-	img := image.NewRGBA(image.Rect(0, 0, width, int(l.h()*res+0.5)))
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
 	pdf, err := base.Render(int(PageWidth*res + 0.5))
 	if err != nil {

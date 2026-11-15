@@ -57,6 +57,13 @@ func TestRenderEndpoint(t *testing.T) {
 	tr.Put("book", libtest.Meta("Book", "DocumentType", ""), map[string]any{"fileType": "epub", "pageCount": float64(1)}, map[string][]byte{".epub": []byte("PK epub")})
 	tr.PDF("private", "Private", "", rendertest.PDF())
 	tr.PDF("plain", "Uploaded", "", rendertest.PDF())
+	onePage := map[string]any{"fileType": "notebook", "cPages": map[string]any{"pages": []any{
+		map[string]any{"id": "pa", "idx": map[string]any{"value": "a"}},
+	}}}
+	tr.Put("long", libtest.Meta("Long", "DocumentType", ""), onePage, map[string][]byte{"/pa.rm": strokePage(30000)})
+	// A v5 file that gives 2^32 - 16 layers.
+	bomb := append([]byte(rmfile.HeaderV5), 0xf0, 0xff, 0xff, 0xff)
+	tr.Put("bomb", libtest.Meta("Bomb", "DocumentType", ""), onePage, map[string][]byte{"/pa.rm": bomb})
 	tr.Commit(4)
 	base := "/api/v1/library/"
 
@@ -124,6 +131,8 @@ func TestRenderEndpoint(t *testing.T) {
 		{"width too large", "nb/pages/1/render?width=4097", 400},
 		{"unknown format", "nb/pages/1/render?format=jpeg", 400},
 		{"SVG of a PDF page", "annot/pages/1/render?format=svg", 400},
+		{"too many pixels", "long/pages/1/render?width=4096", 400},
+		{"page file with a bad count", "bomb/pages/1/render", 500},
 	} {
 		if r := e.req("GET", base+tc.path, owner, nil); r.status != tc.status {
 			t.Errorf("%s: %d %s", tc.name, r.status, r.body)

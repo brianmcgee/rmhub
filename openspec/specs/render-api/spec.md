@@ -12,7 +12,12 @@ can skip the download of an image that it already has.
 MUST be a content endpoint. It MUST return the page image with the media
 type `image/png` or `image/svg+xml`. The default format MUST be `png`. The
 default width MUST be 1404 pixels. A width below 100 or above 4096 MUST
-get status 400.
+get status 400. A PNG image MUST NOT have more than 64 × 2^20 pixels: a
+page that is too long for the requested width MUST get status 400.
+
+#### Scenario: Long page at the largest width
+- **WHEN** a client requests a page that is 16 pages long with the width 4096
+- **THEN** the server answers with status 400
 
 #### Scenario: Render page 3
 - **WHEN** a client requests page 3 of a notebook as PNG
