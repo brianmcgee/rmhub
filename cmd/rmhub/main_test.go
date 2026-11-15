@@ -21,14 +21,21 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func freeAddr(t *testing.T) string {
+// freeAddrs returns two different free loopback addresses.
+func freeAddrs(t *testing.T) (string, string) {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	// Keep the first socket open until the second has its port. Else the
+	// system can give the same port two times.
+	var addrs [2]string
+	for i := range addrs {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = l.Close() }()
+		addrs[i] = l.Addr().String()
 	}
-	defer func() { _ = l.Close() }()
-	return l.Addr().String()
+	return addrs[0], addrs[1]
 }
 
 // startServe starts the command in a child process.
@@ -100,7 +107,7 @@ func TestServeDefaults(t *testing.T) {
 
 func TestServeConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	tablet, api := freeAddr(t), freeAddr(t)
+	tablet, api := freeAddrs(t)
 	cfg := filepath.Join(dir, "config.toml")
 	text := fmt.Sprintf("data_dir = %q\n[listen.tablet]\naddress = %q\n[listen.api]\naddress = %q\n", dir, tablet, api)
 	if err := os.WriteFile(cfg, []byte(text), 0o600); err != nil {
