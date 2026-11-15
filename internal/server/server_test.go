@@ -130,3 +130,46 @@ func TestShutdownWaitsForRequest(t *testing.T) {
 		t.Fatal("server accepts requests after shutdown")
 	}
 }
+
+// TestIdleConnectionCloses makes sure that the server closes a
+// connection that sends no request for IdleTimeout.
+func TestIdleConnectionCloses(t *testing.T) {
+	old := server.IdleTimeout
+	server.IdleTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { server.IdleTimeout = old })
+
+	mux := http.NewServeMux()
+	server.HandleHealth(mux)
+	bs, err := server.Bind(server.Listener{Name: "api", Config: config.Listener{Address: "127.0.0.1:0"}, Handler: mux})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(ctx, slog.New(slog.DiscardHandler), bs) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-served; err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	})
+
+	conn, err := net.Dial("tcp", bs[0].Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "GET /healthz HTTP/1.1\r\nHost: x\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	// The answer comes first. Then the server closes the connection, and
+	// the read ends with io.EOF before the deadline.
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	b, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("the idle connection stays open: %v", err)
+	}
+	if !strings.HasPrefix(string(b), "HTTP/1.1 200") {
+		t.Fatalf("answer: %q", b)
+	}
+}

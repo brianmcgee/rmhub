@@ -14,6 +14,11 @@ import (
 	"github.com/brianmcgee/rmhub/internal/config"
 )
 
+// IdleTimeout is the time that a connection without a request stays
+// open. Without it, each client can keep connections open with no limit
+// of time.
+var IdleTimeout = 2 * time.Minute
+
 // ShutdownTimeout is the time that requests in progress get to finish
 // after a shutdown signal.
 const ShutdownTimeout = 10 * time.Second
@@ -85,8 +90,11 @@ func Serve(ctx context.Context, log *slog.Logger, bs []*Bound) error {
 		srv := &http.Server{
 			Handler:           b.Handler,
 			ReadHeaderTimeout: 30 * time.Second,
-			ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
-			BaseContext:       func(net.Listener) context.Context { return context.WithoutCancel(ctx) },
+			// No ReadTimeout and no WriteTimeout: uploads, event streams
+			// and websockets are long.
+			IdleTimeout: IdleTimeout,
+			ErrorLog:    slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+			BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) },
 		}
 		servers[i] = srv
 		log.Info("listening", "listener", b.Name, "address", b.Addr().String(), "tls", b.Config.TLSCertFile != "")
