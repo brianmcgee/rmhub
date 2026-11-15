@@ -90,13 +90,18 @@ func (s *Store) link(ns blob.Namespace, key, tmp string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.Link(tmp, final); err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			return nil
-		}
+	if err := os.Link(tmp, final); err != nil && !errors.Is(err, fs.ErrExist) {
 		return err
 	}
-	return syncDir(dir)
+	// Sync also the parents: a new directory is durable only when the
+	// directory that holds it is on disk. Sync also for a blob that
+	// exists: its writer possibly did not sync yet.
+	for _, d := range []string{dir, filepath.Dir(dir), s.dir} {
+		if err := syncDir(d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func syncDir(dir string) error {
