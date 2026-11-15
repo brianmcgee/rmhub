@@ -329,6 +329,30 @@ func TestAdminTokenFileErrors(t *testing.T) {
 	}
 }
 
+// TestTokenFieldLimits makes sure that a token cannot put a record of
+// any size into the state store.
+func TestTokenFieldLimits(t *testing.T) {
+	e := newEnv(t, true)
+	acct, owner := e.user("ada@example.org")
+	long := strings.Repeat("a", 257)
+	if r := e.apiDo("POST", "/api/v1/account/tokens", owner, map[string]string{"label": long}); r.status != 400 || r.errCode(t) != "bad_request" {
+		t.Fatalf("label of 257 bytes: %d %s", r.status, r.body)
+	}
+	if r := e.apiDo("POST", "/api/v1/admin/users/"+acct+"/tokens", e.admin, map[string]string{"label": long}); r.status != 400 {
+		t.Fatalf("label of 257 bytes from the admin: %d %s", r.status, r.body)
+	}
+	if r := e.apiDo("POST", "/api/v1/account/tokens", owner, map[string]string{"label": long[:256]}); r.status != 201 {
+		t.Fatalf("label of 256 bytes: %d %s", r.status, r.body)
+	}
+	gs := make([]map[string]string, 65)
+	for i := range gs {
+		gs[i] = map[string]string{"folder": "f", "access": "read"}
+	}
+	if r := e.apiDo("POST", "/api/v1/account/tokens", owner, map[string]any{"grants": gs}); r.status != 400 || !bytes.Contains(r.body, []byte("64 grants")) {
+		t.Fatalf("65 grants: %d %s", r.status, r.body)
+	}
+}
+
 func TestOwnerTokens(t *testing.T) {
 	e := newEnv(t, true)
 	acct, owner := e.user("ada@example.org")

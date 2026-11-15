@@ -223,7 +223,16 @@ type issueResponse struct {
 	Grants    []tokens.Grant `json:"grants,omitempty"`
 }
 
+// Limits of the fields of a token, so that a token record stays small.
+const (
+	maxTokenLabel  = 256
+	maxTokenGrants = 64
+)
+
 func (s *Service) issue(w http.ResponseWriter, ctx context.Context, account string, spec tokens.Spec) error {
+	if len(spec.Label) > maxTokenLabel {
+		return Errorf(CodeBadRequest, "the label must have at most %d bytes", maxTokenLabel)
+	}
 	text, tok, err := s.Tokens.Issue(ctx, account, spec)
 	if err != nil {
 		return err
@@ -265,6 +274,9 @@ func (s *Service) createToken(w http.ResponseWriter, r *http.Request) error {
 	}
 	if len(req.Grants) == 0 {
 		return Errorf(CodeForbidden, "a scoped token can make only a token with grants")
+	}
+	if len(req.Grants) > maxTokenGrants {
+		return Errorf(CodeBadRequest, "a token can have at most %d grants", maxTokenGrants)
 	}
 	for _, g := range req.Grants {
 		if g.Access != tokens.AccessRead && g.Access != tokens.AccessWrite {
