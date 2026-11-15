@@ -105,11 +105,32 @@ func TestMoveIntoTrashedFolder(t *testing.T) {
 			e.Commit(4)
 		}
 	}
-	s, _, err := o.Run(e.Ctx, owner(e), Patch("d", nil, new("f")))
+	// The tablet wins the race, and the check on the new root refuses
+	// the move.
+	_, _, err := o.Run(e.Ctx, owner(e), Patch("d", nil, new("f")))
+	kind(t, err, KindConflict)
+	// A new entry in a trashed folder, or in its subfolder, is refused
+	// too.
+	e.Folder("sub", "Sub", "f")
+	e.Commit(4)
+	o.beforeCommit = nil
+	for name, op := range map[string]Op{
+		"move":       Patch("d", nil, new("f")),
+		"move deep":  Patch("d", nil, new("sub")),
+		"new folder": CreateFolder("n1", "sub", "N"),
+		"upload":     Upload("n2", "f", "N", library.TypePDF, hashtree.FileHash([]byte("x")), 1),
+	} {
+		_, _, err := o.Run(e.Ctx, owner(e), op)
+		var oe *Error
+		if !errors.As(err, &oe) || oe.Kind != KindConflict {
+			t.Errorf("%s into a trashed folder: %v", name, err)
+		}
+	}
+	s, err := o.Lib.Current(e.Ctx, e.Account)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d, _ := s.Doc("d"); d.Parent != "f" || !d.Trashed {
+	if d, _ := s.Doc("d"); d.Parent != "" || d.Trashed {
 		t.Fatalf("entry %+v", d.Entry)
 	}
 }

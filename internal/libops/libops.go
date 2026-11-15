@@ -210,6 +210,9 @@ func (t *Tx) destination(parent string) error {
 	if d.Type != library.TypeFolder {
 		return errorf(KindBadRequest, "entry %s is not a folder", parent)
 	}
+	if d.Trashed {
+		return errorf(KindConflict, "folder %s is in the trash", parent)
+	}
 	if t.req.Scope != nil && !t.req.Scope.CanWrite(t.S, parent) {
 		return errorf(KindForbidden, "the token has no write access to folder %s", parent)
 	}
