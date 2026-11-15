@@ -43,7 +43,8 @@ in
         }
       '';
       description = ''
-        The configuration of rmhub serve. The README lists the keys. rmhub
+        The configuration of rmhub serve. The file
+        `docs/reference/configuration.md` lists the keys. rmhub
         refuses unknown keys, so a typing error stops the service with an
         error. Do not put a secret value here, because the value goes into
         the Nix store. Give the secret in `credentials`, and refer to it as
