@@ -93,7 +93,7 @@ func (cl *client) send(ctx context.Context, hc *http.Client, method, path string
 	if res.StatusCode >= 400 {
 		defer func() { _ = res.Body.Close() }()
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-		return nil, parseAPIError(res.StatusCode, b)
+		return nil, parseAPIError(res, b)
 	}
 	return res, nil
 }

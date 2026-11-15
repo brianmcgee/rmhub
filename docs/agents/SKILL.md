@@ -239,3 +239,4 @@ tokens that it created and their descendants.
 | 3 | Status 401 or 403: the token is not valid, or it has no right for this operation. | Do not try again. Ask the owner. |
 | 4 | Status 404: no entry with this ID or path, or it is outside your grants. | Use `ls` or `find` to get the entry. |
 | 5 | Status 409 or 412: a path with more than one entry, or a stale `--if-match` hash. | Use an ID, or read the entry again with `stat` and decide again. |
+| 6 | Status 429: too many requests of your token, or too many page renders of the account, in one minute. The command did nothing. | Wait for the number of seconds in the error message. Then run the same command again. Send fewer requests: do not call a command in a loop without a pause. |

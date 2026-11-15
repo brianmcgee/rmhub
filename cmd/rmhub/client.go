@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ const (
 	exitAuth       = 3
 	exitNotFound   = 4
 	exitConflict   = 5
+	// exitRateLimited is for status 429. The client does not send the
+	// request again: the caller decides to wait or to stop.
+	exitRateLimited = 6
 )
 
 // exitError is an error with an exit code.
@@ -47,13 +51,20 @@ type apiError struct {
 	code    string
 	message string
 	body    []byte
+	// retryAfter is the number of seconds of the Retry-After header of
+	// a response with status 429, or 0.
+	retryAfter int
 }
 
 func (e *apiError) Error() string {
-	if e.code == "" {
-		return fmt.Sprintf("server answered with status %d", e.status)
+	text := fmt.Sprintf("server answered with status %d", e.status)
+	if e.code != "" {
+		text = fmt.Sprintf("%s (%s)", e.message, e.code)
 	}
-	return fmt.Sprintf("%s (%s)", e.message, e.code)
+	if e.retryAfter > 0 {
+		text += fmt.Sprintf("; try again in %d seconds", e.retryAfter)
+	}
+	return text
 }
 
 // exitCode maps an error to the exit code of the client.
@@ -71,6 +82,8 @@ func exitCode(err error) int {
 			return exitNotFound
 		case http.StatusConflict, http.StatusPreconditionFailed:
 			return exitConflict
+		case http.StatusTooManyRequests:
+			return exitRateLimited
 		}
 	}
 	return exitUnexpected
@@ -184,7 +197,7 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) ([]
 		return nil, err
 	}
 	if res.StatusCode >= 400 {
-		return nil, parseAPIError(res.StatusCode, b)
+		return nil, parseAPIError(res, b)
 	}
 	if out != nil && len(b) > 0 {
 		if err := json.Unmarshal(b, out); err != nil {
@@ -195,8 +208,12 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) ([]
 }
 
 // parseAPIError reads the error body of a response.
-func parseAPIError(status int, b []byte) error {
-	e := &apiError{status: status}
+func parseAPIError(res *http.Response, b []byte) error {
+	e := &apiError{status: res.StatusCode}
+	if e.status == http.StatusTooManyRequests {
+		// A value that is not a number of seconds gives 0.
+		e.retryAfter, _ = strconv.Atoi(res.Header.Get("Retry-After"))
+	}
 	var eb struct {
 		Error struct{ Code, Message string }
 	}

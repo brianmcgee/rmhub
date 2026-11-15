@@ -37,8 +37,8 @@
 
 ## 6. Client
 
-- [ ] 6.1 Map status 429 to the exit code 6 in `cmd/rmhub`, with the seconds of `Retry-After` in the message. Verify with a test against a server with `limits.api_per_minute = 1` that the second command exits with code 6 and prints the seconds.
-- [ ] 6.2 Add the exit code 6 to the help text of the root command and to `docs/agents/SKILL.md`, with the instruction to wait and try again. Verify that `TestEachCommandHasHelp` passes.
+- [x] 6.1 Map status 429 to the exit code 6 in `cmd/rmhub`, with the seconds of `Retry-After` in the message. Verify with a test against a server with `limits.api_per_minute = 1` that the second command exits with code 6 and prints the seconds.
+- [x] 6.2 Add the exit code 6 to the help text of the root command and to `docs/agents/SKILL.md`, with the instruction to wait and try again. Verify that `TestEachCommandHasHelp` passes.
 
 ## 7. Deployment guide
 

@@ -375,7 +375,7 @@ token = "rmh_…"
 Each command prints text by default and one JSON value with `--json`.
 Errors go to standard error. The exit codes are: 0 success, 1 unexpected
 error, 2 usage or setting error, 3 status 401 or 403, 4 status 404, 5
-status 409 or 412. `rmhub <command> --help` shows the options, the JSON
+status 409 or 412, 6 status 429 (see "Request limits"). `rmhub <command> --help` shows the options, the JSON
 output form and an example.
 
 ### Library and agents
