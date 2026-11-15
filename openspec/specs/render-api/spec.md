@@ -70,9 +70,16 @@ MUST be atomic.
 - **THEN** the server deletes the oldest files, and the cache stays at or below the limit
 
 ### Requirement: Parallel renders
-The server MUST run at most as many renders at the same time as it has CPU
-threads. Other render requests MUST wait. Two requests for the same
-uncached image MUST start only one render.
+The server MUST run at most `render.max_workers` renders at the same
+time. The default MUST be the number of CPU threads, but not more than
+4. Other render requests MUST wait. Two requests for the same uncached
+image MUST start only one render. A value below 0 MUST be a
+configuration error that names the key.
+
+#### Scenario: Host with many CPU threads
+- **GIVEN** a host with 32 CPU threads and no `render.max_workers`
+- **WHEN** 32 clients request different uncached PDF pages at the same time
+- **THEN** the server runs at most 4 renders at the same time
 
 #### Scenario: Same page twice
 - **WHEN** two clients request the same uncached image at the same time

@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -123,6 +124,7 @@ func TestErrors(t *testing.T) {
 		{"negative upload limit", "[api]\nmax_upload_bytes = -1\n", "api.max_upload_bytes"},
 		{"negative blob limit", "[tablet]\nmax_blob_bytes = -1\n", "tablet.max_blob_bytes"},
 		{"negative cache limit", "[render]\ncache_max_bytes = -1\n", "render.cache_max_bytes"},
+		{"negative render workers", "[render]\nmax_workers = -1\n", "render.max_workers"},
 		{"pairing limit 0", "[limits]\npairing_per_minute = 0\n", "limits.pairing_per_minute"},
 		{"API limit -2", "[limits]\napi_per_minute = -2\n", "limits.api_per_minute"},
 		{"render limit 0", "[limits]\nrender_per_minute = 0\n", "limits.render_per_minute"},
@@ -172,6 +174,13 @@ func TestRenderSettings(t *testing.T) {
 	cfg, err = config.Parse("[render]\ncache_dir = \"/var/cache/r\"\ncache_max_bytes = 1000\n")
 	if err != nil || cfg.Render.CacheDir != "/var/cache/r" || cfg.Render.CacheMaxBytes != 1000 {
 		t.Fatalf("explicit: %+v %v", cfg.Render, err)
+	}
+	if want := min(runtime.NumCPU(), 4); cfg.Render.MaxWorkers != want {
+		t.Errorf("default max_workers = %d, want %d", cfg.Render.MaxWorkers, want)
+	}
+	cfg, err = config.Parse("[render]\nmax_workers = 7\n")
+	if err != nil || cfg.Render.MaxWorkers != 7 {
+		t.Fatalf("max_workers = 7: %+v %v", cfg.Render, err)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -55,7 +56,17 @@ type RenderConfig struct {
 	CacheDir string `toml:"cache_dir"`
 	// CacheMaxBytes is the maximum size of the cache.
 	CacheMaxBytes int64 `toml:"cache_max_bytes"`
+	// MaxWorkers is the maximum number of renders at the same time. It
+	// is also the maximum number of PDFium instances; each instance can
+	// use up to 1 GiB of memory.
+	MaxWorkers int `toml:"max_workers"`
 }
+
+// DefaultMaxWorkersLimit is the upper limit of the default of
+// render.max_workers. The default is the number of CPU threads, but not
+// more than this value, so that a host with many CPU threads does not
+// give many GiB of memory to PDFium.
+const DefaultMaxWorkersLimit = 4
 
 // DefaultCacheMaxBytes is the default of render.cache_max_bytes (1 GiB).
 const DefaultCacheMaxBytes = 1 << 30
@@ -267,6 +278,9 @@ func (c *Config) setDefaults() {
 	if c.Render.CacheDir == "" {
 		c.Render.CacheDir = filepath.Join(xdg.CacheHome(), "rmhub", "render")
 	}
+	if c.Render.MaxWorkers == 0 {
+		c.Render.MaxWorkers = min(runtime.NumCPU(), DefaultMaxWorkersLimit)
+	}
 	if c.Render.CacheMaxBytes == 0 {
 		c.Render.CacheMaxBytes = DefaultCacheMaxBytes
 	}
@@ -315,6 +329,9 @@ func (c *Config) validate() error {
 	}
 	if c.Tablet.MaxBlobBytes < 0 {
 		return fmt.Errorf("tablet.max_blob_bytes: the value must be positive")
+	}
+	if c.Render.MaxWorkers < 0 {
+		return fmt.Errorf("render.max_workers: the value must be positive")
 	}
 	if c.Render.CacheMaxBytes < 0 {
 		return fmt.Errorf("render.cache_max_bytes: the value must be positive")

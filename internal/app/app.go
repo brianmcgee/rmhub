@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"runtime"
 	"time"
 
 	"github.com/brianmcgee/rmhub/internal/accounts"
@@ -112,7 +111,7 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		MaxUpload: cfg.API.MaxUploadBytes,
 		TempDir:   stores.TempDir,
 		Stop:      ctx.Done(),
-		Render:    api.NewRenderer(cache, runtime.NumCPU(), log),
+		Render:    api.NewRenderer(cache, cfg.Render.MaxWorkers, log),
 	}
 	a.Library.Render.Limit = ratelimit.New(cfg.Limits.RenderPerMinute)
 	go func() {
