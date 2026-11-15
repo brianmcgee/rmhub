@@ -12,6 +12,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/image v0.45.0
 	modernc.org/sqlite v1.62.0
 )
 
