@@ -644,3 +644,24 @@ func TestKeepaliveAndRemoval(t *testing.T) {
 		t.Fatal("server did not close the websocket of a removed device")
 	}
 }
+
+// TestBlobWriteLimit makes sure that the server refuses a blob that is
+// larger than tablet.max_blob_bytes, and keeps nothing of it.
+func TestBlobWriteLimit(t *testing.T) {
+	e := newEnvWith(t, true, "[tablet]\nmax_blob_bytes = 4096\n")
+	_, owner := e.user("ada@example.org")
+	user := e.device(owner, "RM110-1")
+
+	ok := bytes.Repeat([]byte("a"), 4096)
+	if r := e.tab("PUT", "/sync/v3/files/"+hashtree.FileHash(ok), user, ok, nil); r.status != 200 {
+		t.Fatalf("blob of 4096 bytes: %d %s", r.status, r.body)
+	}
+	big := bytes.Repeat([]byte("a"), 4097)
+	h := hashtree.FileHash(big)
+	if r := e.tab("PUT", "/sync/v3/files/"+h, user, big, nil); r.status != 413 {
+		t.Fatalf("blob of 4097 bytes: %d %s", r.status, r.body)
+	}
+	if r := e.tab("GET", "/sync/v3/files/"+h, user, nil, nil); r.status != 404 {
+		t.Fatalf("the refused blob is in the store: %d", r.status)
+	}
+}

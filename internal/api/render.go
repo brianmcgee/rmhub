@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -165,7 +166,7 @@ func (l *Library) renderPage(w http.ResponseWriter, r *http.Request) error {
 	b, err := l.Render.image(r.Context(), key, func(ctx context.Context) ([]byte, error) {
 		var rm []byte
 		if rmHash != "" {
-			if rm, err = l.blob(ctx, ns, rmHash, d.ID); err != nil {
+			if rm, err = l.blobMax(ctx, ns, rmHash, d.ID, maxPageFile); err != nil {
 				return nil, err
 			}
 		}
@@ -195,9 +196,18 @@ func (l *Library) renderPage(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// maxPageFile is the maximum size in bytes of a .rm file that the
+// server reads into memory for a render.
+const maxPageFile = 32 << 20
+
 // blob reads a file of the document id from the blob store.
 func (l *Library) blob(ctx context.Context, ns blob.Namespace, hash, id string) ([]byte, error) {
-	rc, _, err := l.Blobs.Get(ctx, ns, hash)
+	return l.blobMax(ctx, ns, hash, id, math.MaxInt64)
+}
+
+// blobMax is blob with a size limit. A larger file gives code conflict.
+func (l *Library) blobMax(ctx context.Context, ns blob.Namespace, hash, id string, limit int64) ([]byte, error) {
+	rc, size, err := l.Blobs.Get(ctx, ns, hash)
 	if errors.Is(err, blob.ErrNotFound) {
 		return nil, Errorf(CodeNotFound, "a file of entry %s is not in the blob store", id)
 	}
@@ -205,5 +215,8 @@ func (l *Library) blob(ctx context.Context, ns blob.Namespace, hash, id string) 
 		return nil, err
 	}
 	defer func() { _ = rc.Close() }()
+	if size > limit {
+		return nil, Errorf(CodeConflict, "a file of entry %s has %d bytes, and the limit is %d bytes", id, size, limit)
+	}
 	return io.ReadAll(rc)
 }

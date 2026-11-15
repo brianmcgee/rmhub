@@ -26,7 +26,8 @@ their descendants. For a scoped token, the top level is the list of the
 grant folders, and each path starts at a grant folder. A `read` grant
 lets you read. A `write` grant also lets you change entries in the
 folder. You cannot rename, move or trash a grant folder, and you cannot
-write at the top level.
+write at the top level. A grant folder that the owner moves into the
+trash is not visible until the owner restores it.
 
 ## Rules
 

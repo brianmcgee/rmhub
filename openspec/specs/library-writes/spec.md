@@ -33,7 +33,7 @@ not valid on the new root MUST get the error of that check.
 #### Scenario: Tablet trashed the target
 - **GIVEN** an API client moves the document D into the folder F
 - **WHEN** a tablet moves F into the trash before the API commit
-- **THEN** the move succeeds, and D is in the trashed folder F
+- **THEN** the server answers with status 409, and D keeps its parent
 
 ### Requirement: Keep unknown metadata
 An operation that changes `.metadata` or `.content` MUST keep each field
@@ -89,6 +89,14 @@ The server MUST refuse these moves with status 400:
 - A move into a parent that is not a folder.
 - A move into the parent `trash`.
 - A move of a folder into itself or into its descendant.
+
+A create, an upload or a move with a parent that is in the trash MUST
+get status 409.
+
+#### Scenario: Create in a trashed folder
+- **GIVEN** the folder F is in the trash
+- **WHEN** a client creates a folder with the parent F
+- **THEN** the server answers with status 409
 
 #### Scenario: Move into a descendant
 - **GIVEN** the folder B is in the folder A

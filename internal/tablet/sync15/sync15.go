@@ -69,6 +69,8 @@ type Service struct {
 	TempDir string
 	// CheckFiles is false when tablet.check_files is "none".
 	CheckFiles bool
+	// MaxBlob is the maximum size in bytes of a blob write.
+	MaxBlob int64
 
 	cacheOnce sync.Once
 	cache     *lru.Cache[string, *hashtree.Index]
@@ -445,6 +447,13 @@ func (s *Service) putBlob(w http.ResponseWriter, r *http.Request, _ tablet.User,
 	if err != nil {
 		return err
 	}
+	tooLarge := httpError{
+		status: http.StatusRequestEntityTooLarge,
+		msg:    fmt.Sprintf("body is larger than %d bytes (tablet.max_blob_bytes)", s.MaxBlob),
+	}
+	if r.ContentLength > s.MaxBlob {
+		return tooLarge
+	}
 	f, err := os.CreateTemp(s.TempDir, "put-*")
 	if err != nil {
 		return err
@@ -453,12 +462,15 @@ func (s *Service) putBlob(w http.ResponseWriter, r *http.Request, _ tablet.User,
 	defer func() { _ = os.Remove(path) }()
 	sha := sha256.New()
 	crc := crc32.New(castagnoli)
-	n, err := io.Copy(io.MultiWriter(f, sha, crc), r.Body)
+	n, err := io.Copy(io.MultiWriter(f, sha, crc), io.LimitReader(r.Body, s.MaxBlob+1))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return badRequest("request body cannot be read: %v", err)
+	}
+	if n > s.MaxBlob {
+		return tooLarge
 	}
 	if hasCRC && crc.Sum32() != want {
 		return badRequest("crc32c of the body does not match x-goog-hash")

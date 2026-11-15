@@ -75,3 +75,34 @@ func TestPDF(t *testing.T) {
 		t.Error("a bad PDF gives no error")
 	}
 }
+
+// TestPDFMemoryLimit makes sure that a render that needs more memory
+// than the limit gives an error, and that the pool renders after it.
+func TestPDFMemoryLimit(t *testing.T) {
+	ctx := context.Background()
+	p, err := newPDF(ctx, 1, 48<<20>>16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	if _, err := p.Render(ctx, rendertest.PDF(), 1, nil, 4096); err == nil {
+		t.Fatal("a render of 84 MiB with a limit of 48 MiB gives no error")
+	}
+	if _, err := p.Render(ctx, rendertest.PDF(), 1, nil, 200); err != nil {
+		t.Fatalf("render after the refused render: %v", err)
+	}
+}
+
+// TestPDFLargestWidth makes sure that the largest width fits in the
+// memory limit.
+func TestPDFLargestWidth(t *testing.T) {
+	ctx := context.Background()
+	p, err := NewPDF(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	if _, err := p.Render(ctx, rendertest.PDF(), 1, nil, 4096); err != nil {
+		t.Fatal(err)
+	}
+}

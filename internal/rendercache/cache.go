@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/brianmcgee/rmhub/internal/stale"
 )
 
 // tmpPrefix starts the name of a file that is not complete.
@@ -33,6 +35,9 @@ func New(dir string, max int64) (*Cache, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("make the render cache directory: %w", err)
 	}
+	// A process that stopped during a write can leave files that are not
+	// complete.
+	stale.Remove(dir, stale.Age, tmpPrefix)
 	return &Cache{dir: dir, max: max}, nil
 }
 

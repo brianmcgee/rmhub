@@ -56,7 +56,12 @@ type TabletConfig struct {
 	// CheckFiles is "truthful" or "none". With "none", check-files
 	// always tells that no file is missing.
 	CheckFiles string `toml:"check_files"`
+	// MaxBlobBytes is the maximum size of a blob that a tablet puts.
+	MaxBlobBytes int64 `toml:"max_blob_bytes"`
 }
+
+// DefaultMaxBlobBytes is the default of tablet.max_blob_bytes (256 MiB).
+const DefaultMaxBlobBytes = 256 << 20
 
 // AdminConfig names the file of the admin token. Without a file, each
 // admin request gets status 401.
@@ -184,6 +189,9 @@ func (c *Config) setDefaults() {
 	if c.API.MaxUploadBytes == 0 {
 		c.API.MaxUploadBytes = DefaultMaxUploadBytes
 	}
+	if c.Tablet.MaxBlobBytes == 0 {
+		c.Tablet.MaxBlobBytes = DefaultMaxBlobBytes
+	}
 	if c.Tablet.CheckFiles == "" {
 		c.Tablet.CheckFiles = "truthful"
 	}
@@ -232,6 +240,9 @@ func (c *Config) validate() error {
 	}
 	if c.API.MaxUploadBytes < 0 {
 		return fmt.Errorf("api.max_upload_bytes: the value must be positive")
+	}
+	if c.Tablet.MaxBlobBytes < 0 {
+		return fmt.Errorf("tablet.max_blob_bytes: the value must be positive")
 	}
 	if c.Render.CacheMaxBytes < 0 {
 		return fmt.Errorf("render.cache_max_bytes: the value must be positive")
