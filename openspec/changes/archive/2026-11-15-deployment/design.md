@@ -118,3 +118,56 @@ not to delete it.
   → The guide warns about this. After a way back, the tablet syncs its
   local state to rmfakecloud. [INFERENCE] The tablet treats the old
   rmfakecloud root as a remote state and merges with it.
+
+## Implementation notes
+
+### Decisions
+
+- **The example has no `tablet.announced_host`.** The discovery host must
+  resolve to the proxy on the tablet, so the default `local.appspot.com`
+  is correct for rmfakecloud-proxy. The proxy `upstream` points at
+  rmhub, not the announced host.
+- **The example uses ACME with the HTTP-01 challenge** (`listenHTTP =
+  ":80"`) and opens port 80. The VM has no internet, so the test replaces
+  `security.acme.certs` with an empty set and gives the test certificate
+  through `credentials`.
+- **Extra hardening.** The module sets more options than the spec names:
+  `PrivateDevices`, `ProtectKernel*`, `ProtectProc=invisible`,
+  `SystemCallFilter=@system-service ~@privileged ~@resources` and
+  `UMask=0077`, among others. `systemd-analyze security` gives the
+  exposure level 1.3 (OK) in the VM test log.
+- **`openFirewall` opens both listener ports**, as the spec says, also
+  when the API listener is on the loopback interface. The port comes from
+  the text after the last `:` of the address.
+- **The VM test renders a PDF page without strokes.** rmapi cannot add a
+  `.rm` file. The render goes through PDFium in wazero, which is the part
+  that the hardening can break.
+- **The test PDF** is written by a small Python script with correct
+  cross-reference offsets. The test CA and the server key are in the Nix
+  store, which is acceptable for a test only.
+
+### Finding for review: MemoryDenyWriteExecute
+
+The design says that `MemoryDenyWriteExecute` breaks wazero. A throwaway
+run of the VM test with `MemoryDenyWriteExecute = true` rendered the PDF
+page with no error (2.4 s). The cause is unknown. [INFERENCE] wazero
+can map its code in a way that the seccomp filter of systemd does not
+block, or it falls back to its interpreter. The module follows the spec
+and does not set the option. Enabling it needs a check of the mappings
+of the running process first.
+
+### Verification
+
+- `nix eval .#nixosModules` lists `rmhub`.
+- An evaluation of the VM test node shows `DynamicUser`,
+  `StateDirectory`, `CacheDirectory`, `LoadCredential`,
+  `Restart=on-failure`, each named hardening option, no
+  `MemoryDenyWriteExecute`, and the firewall ports `[ 80 8081 8443 ]`
+  for the tablet address `0.0.0.0:8443`.
+- `checks.x86_64-linux.nixos-module` passes: health on both listeners,
+  user, token and pairing code with the CLI, rmapi pairing through TLS
+  with the test CA, rmapi upload, `rmhub render` of page 1 (a 1404-pixel
+  PNG), restart, rmapi listing, and no admin token in the generated TOML.
+- The nginx example of the guide passes `nginx -t` (port changed to
+  18443 for an unprivileged run).
+- The rmhub commands of the switch section ran against a local server.
