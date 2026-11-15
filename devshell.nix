@@ -6,6 +6,7 @@ pkgs.mkShell {
     pkgs.gotools
     pkgs.golangci-lint
     pkgs.delve
+    pkgs.mdbook
     perSystem.self.formatter
   ];
 

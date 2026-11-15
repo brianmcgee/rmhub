@@ -1,0 +1,293 @@
+/*
+ * The rmhub style for mdBook.
+ *
+ * mdBook loads this file after its default style sheets. The file
+ * changes the Light theme and the Navy theme only. Light is the default
+ * theme. Navy is the theme for a reader who prefers dark colours.
+ *
+ * The fonts are the fonts of the operating system, so the site
+ * downloads no font for the text.
+ */
+
+:root {
+    --content-max-width: 760px;
+    --sidebar-target-width: 270px;
+    --menu-bar-height: 48px;
+    --mono-font: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas,
+        "DejaVu Sans Mono", monospace;
+    --code-font-size: 0.85em;
+    --rmhub-sans-font: system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", "Noto Sans", sans-serif;
+    --rmhub-radius: 6px;
+}
+
+/* Colours */
+
+.light,
+html:not(.js) {
+    --bg: #ffffff;
+    --fg: #1f2328;
+
+    --sidebar-bg: #fafafa;
+    --sidebar-fg: #4b5563;
+    --sidebar-non-existant: #9ca3af;
+    --sidebar-active: #0b5cd7;
+    --sidebar-spacer: #e5e7eb;
+    --sidebar-header-border-color: #e5e7eb;
+
+    --icons: #9ca3af;
+    --icons-hover: #1f2328;
+
+    --links: #0b5cd7;
+    --inline-code-color: #1f2328;
+
+    --theme-popup-bg: #ffffff;
+    --theme-popup-border: #e5e7eb;
+    --theme-hover: #f3f4f6;
+
+    --quote-bg: #f6f8fa;
+    --quote-border: #e5e7eb;
+
+    --table-border-color: #e5e7eb;
+    --table-header-bg: #f6f8fa;
+    --table-alternate-bg: #ffffff;
+
+    --searchbar-border-color: #d1d5db;
+    --searchbar-bg: #ffffff;
+    --searchbar-fg: #1f2328;
+    --searchbar-shadow-color: #c7d7f5;
+    --searchresults-border-color: #e5e7eb;
+    --searchresults-li-bg: #eef4ff;
+
+    --rmhub-border: #e5e7eb;
+    --rmhub-code-bg: #f6f8fa;
+    --rmhub-heading: #0f1419;
+    --rmhub-active-bg: #eef4ff;
+}
+
+.navy {
+    --bg: #0f1115;
+    --fg: #c9d1d9;
+
+    --sidebar-bg: #13161b;
+    --sidebar-fg: #9aa4b2;
+    --sidebar-non-existant: #5b6472;
+    --sidebar-active: #6ea8fe;
+    --sidebar-spacer: #262b33;
+    --sidebar-header-border-color: #262b33;
+
+    --icons: #5b6472;
+    --icons-hover: #c9d1d9;
+
+    --links: #6ea8fe;
+    --inline-code-color: #c9d1d9;
+
+    --theme-popup-bg: #13161b;
+    --theme-popup-border: #262b33;
+    --theme-hover: #1c2027;
+
+    --quote-bg: #161a20;
+    --quote-border: #262b33;
+
+    --table-border-color: #262b33;
+    --table-header-bg: #161a20;
+    --table-alternate-bg: #0f1115;
+
+    --searchbar-border-color: #363c46;
+    --searchbar-bg: #13161b;
+    --searchbar-fg: #c9d1d9;
+    --searchbar-shadow-color: #1f3a66;
+    --searchresults-border-color: #262b33;
+    --searchresults-li-bg: #172133;
+
+    --rmhub-border: #262b33;
+    --rmhub-code-bg: #161a20;
+    --rmhub-heading: #f0f3f6;
+    --rmhub-active-bg: #172133;
+}
+
+/* Text */
+
+html {
+    font-family: var(--rmhub-sans-font);
+}
+
+.content {
+    line-height: 1.7;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+    color: var(--rmhub-heading);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+}
+
+.content h1 {
+    font-size: 2em;
+    margin-block-end: 0.8em;
+}
+
+.content h2 {
+    font-size: 1.4em;
+    padding-block-end: 0.35em;
+    border-block-end: 1px solid var(--rmhub-border);
+}
+
+.content h3 {
+    font-size: 1.15em;
+}
+
+.content a:link,
+.content a:visited {
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--links) 35%, transparent);
+    text-underline-offset: 0.2em;
+}
+
+.content a:hover {
+    text-decoration-color: var(--links);
+}
+
+/* A link on a heading has the colour of the heading. */
+.content a.header:link,
+.content a.header:visited {
+    color: inherit;
+    text-decoration: none;
+}
+
+/* Code */
+
+.light pre > code.hljs,
+.navy pre > code.hljs,
+.light pre > code,
+.navy pre > code {
+    background: var(--rmhub-code-bg);
+}
+
+.light pre,
+.navy pre {
+    border: 1px solid var(--rmhub-border);
+    border-radius: var(--rmhub-radius);
+    background: var(--rmhub-code-bg);
+}
+
+.light pre > code,
+.navy pre > code {
+    padding: 0.9em 1.1em;
+    line-height: 1.55;
+}
+
+.light :not(pre) > code.hljs,
+.navy :not(pre) > code.hljs {
+    padding: 0.15em 0.4em;
+    border: 1px solid var(--rmhub-border);
+    border-radius: 4px;
+    background: var(--rmhub-code-bg);
+}
+
+/* Tables */
+
+.light table,
+.navy table {
+    border-collapse: collapse;
+    font-size: 0.95em;
+}
+
+.light table th,
+.navy table th {
+    font-weight: 600;
+    text-align: start;
+}
+
+.light table th,
+.light table td,
+.navy table th,
+.navy table td {
+    padding: 0.5em 0.9em;
+    border: 1px solid var(--rmhub-border);
+}
+
+/* Menu bar */
+
+.light #mdbook-menu-bar,
+.navy #mdbook-menu-bar {
+    border-block-end: 1px solid var(--rmhub-border);
+}
+
+.light .menu-title,
+.navy .menu-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--rmhub-heading);
+}
+
+/* Sidebar */
+
+.light .sidebar,
+.navy .sidebar {
+    border-inline-end: 1px solid var(--rmhub-border);
+}
+
+.light .sidebar .sidebar-scrollbox,
+.navy .sidebar .sidebar-scrollbox {
+    padding: 16px 14px;
+}
+
+.light .chapter li.part-title,
+.navy .chapter li.part-title {
+    margin-block: 1.6em 0.3em;
+    padding-inline: 10px;
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sidebar-non-existant);
+}
+
+.light .chapter li.chapter-item,
+.navy .chapter li.chapter-item {
+    margin-block-start: 2px;
+}
+
+.light .chapter li a,
+.navy .chapter li a {
+    flex: 1;
+    padding: 5px 10px;
+    border-radius: var(--rmhub-radius);
+}
+
+.light .chapter li a:hover,
+.navy .chapter li a:hover {
+    background: var(--theme-hover);
+    color: var(--fg);
+}
+
+.light .chapter li a.active,
+.navy .chapter li a.active {
+    background: var(--rmhub-active-bg);
+    color: var(--sidebar-active);
+    font-weight: 500;
+}
+
+.light .chapter .on-this-page,
+.navy .chapter .on-this-page {
+    margin-left: 14px;
+    border-inline-start-width: 1px;
+    padding-left: 4px;
+}
+
+.light .chapter .on-this-page a,
+.navy .chapter .on-this-page a {
+    padding-block: 2px;
+    font-size: 0.95em;
+}
+
+.light .chapter .on-this-page a.current-header,
+.navy .chapter .on-this-page a.current-header {
+    background: none;
+    color: var(--sidebar-active);
+}

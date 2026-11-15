@@ -6,6 +6,9 @@
 result
 result-*
 
+# mdbook
+/book/
+
 # go
 /vendor/
 /rmhub

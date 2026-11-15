@@ -59,7 +59,8 @@ Rules for each page:
 - Put a page in one part only. Do not mix a procedure into a reference
   page, and do not mix design reasons into a how-to guide. Link to the
   other part.
-- Add each new page to this index.
+- Add each new page to this index and to `SUMMARY.md`. `SUMMARY.md` is
+  the table of contents of the documentation site.
 - Run each command that a page shows, and copy the real output.
 - State each fact one time. Other pages link to it.
 - Write in ASD-STE100 Simplified Technical English.

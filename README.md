@@ -17,7 +17,8 @@ render EPUB pages.
 
 ## Documentation
 
-The documentation is in [`docs/`](docs/README.md). It follows the
+Read the documentation at <https://brianmcgee.github.io/rmhub/>. The
+source is in [`docs/`](docs/README.md). It follows the
 [Diátaxis](https://diataxis.fr) system:
 
 | Part | Start here |
@@ -37,8 +38,9 @@ The repository is a Nix flake that uses
 [treefmt-nix](https://github.com/numtide/treefmt-nix).
 
 ```console
-nix develop          # Go toolchain, gopls, golangci-lint
+nix develop          # Go toolchain, gopls, golangci-lint, mdbook
 nix build .#rmhub    # build the server
+nix run .#docs       # serve the documentation site on port 8000
 nix fmt              # format Nix and Go code
 nix flake check      # run the formatter, lint and S3 contract checks
 ```
@@ -53,6 +55,13 @@ go test ./...
 ```
 
 With direnv, run `direnv allow` once to load the devshell.
+
+[mdBook](https://rust-lang.github.io/mdBook/) builds the documentation
+site from `docs/`. `nix run .#docs` builds the site and serves it on
+<http://127.0.0.1:8000>. Give a different port as an argument. In the
+devshell, `mdbook serve` shows the site on <http://localhost:3000> and
+builds it again after each change. A push to `main` publishes the site
+to GitHub Pages.
 
 ## Specifications
 

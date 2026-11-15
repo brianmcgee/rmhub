@@ -27,6 +27,7 @@ The user documentation is in `docs/`. It follows the Diátaxis system:
   exit code, an endpoint, a NixOS option and a procedure.
 - `docs/README.md` has a table from each type of change to the pages to
   update. Read it before you change the documentation.
-- Put each page in one part only. Add each new page to `docs/README.md`.
+- Put each page in one part only. Add each new page to `docs/README.md`
+  and to `docs/SUMMARY.md`.
 - Run each command that a page shows, and copy the real output.
 - Do not add user documentation to `README.md`. Link to `docs/`.

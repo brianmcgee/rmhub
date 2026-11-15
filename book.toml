@@ -1,0 +1,22 @@
+# The configuration of the documentation site. mdBook builds the site
+# from the Markdown files in docs/. Show it with `nix run .#docs`.
+
+[book]
+title = "rmhub"
+description = "rmhub: a self-hosted alternative to the reMarkable cloud"
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "book"
+# Stop the build if SUMMARY.md names a page that does not exist.
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+additional-css = ["theme/rmhub.css"]
+# The site is a project page: https://brianmcgee.github.io/rmhub/
+site-url = "/rmhub/"
+git-repository-url = "https://github.com/brianmcgee/rmhub"
+edit-url-template = "https://github.com/brianmcgee/rmhub/edit/main/{path}"
