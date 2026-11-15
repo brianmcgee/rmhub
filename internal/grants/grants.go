@@ -45,18 +45,22 @@ func (sc *Scope) Grants() []tokens.Grant { return sc.chain[0] }
 func (sc *Scope) Len() int { return len(sc.chain) }
 
 // accessOf walks from the entry to the top level and returns the access
-// of the first grant folder, or "".
+// of the first grant folder, or "". A grant folder in the trash gives no
+// access, as for each other entry in the trash.
 func accessOf(s *library.Snapshot, id string, grants []tokens.Grant) string {
 	cur := id
 	for range s.Len() + 1 {
-		for _, g := range grants {
-			if g.Folder == cur {
-				return g.Access
-			}
-		}
 		d, ok := s.Doc(cur)
 		if !ok {
 			return ""
+		}
+		for _, g := range grants {
+			if g.Folder == cur {
+				if d.Trashed {
+					return ""
+				}
+				return g.Access
+			}
 		}
 		cur = d.Parent
 	}

@@ -65,6 +65,26 @@ func TestVisibility(t *testing.T) {
 	if sc.Access(s, "d") != "write" {
 		t.Fatal("grant did not follow the moved folder")
 	}
+	// A tablet moves F into the trash: the token sees nothing of F. The
+	// access comes back when F leaves the trash.
+	e.Folder("f", "F", library.Trash)
+	s = snap(t, e)
+	for _, id := range []string{"f", "g", "d"} {
+		if sc.Visible(s, id) {
+			t.Errorf("the token sees %s in the trashed grant folder", id)
+		}
+	}
+	if tops := sc.Tops(s); len(tops) != 1 || tops[0].ID != "r" {
+		t.Fatalf("tops with F in the trash: %v", tops)
+	}
+	if sc.Covers(s, tokens.Grant{Folder: "g", Access: "read"}) {
+		t.Fatal("the token can give a grant in the trashed grant folder")
+	}
+	e.Folder("f", "F", "r")
+	s = snap(t, e)
+	if sc.Access(s, "d") != "write" {
+		t.Fatal("the access did not come back after the restore")
+	}
 	// A tablet moves G out of F: C can no longer read G.
 	e.Folder("g", "G", "")
 	s = snap(t, e)

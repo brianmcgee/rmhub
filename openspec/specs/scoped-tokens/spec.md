@@ -72,7 +72,14 @@ A scoped token MUST see only the folders of its grants and their
 descendants. A request for any other entry MUST get status 404. Without
 `parent`, `GET /api/v1/library` MUST return the grant folders. The path of
 an entry MUST start at its grant folder, as `/<grant folder name>/…`. A
-path resolve MUST use these paths.
+path resolve MUST use these paths. While a grant folder is in the trash,
+the token MUST NOT see the folder or its descendants. The access MUST
+come back when the folder leaves the trash.
+
+#### Scenario: Grant folder in the trash
+- **GIVEN** a token has a read grant on the folder F
+- **WHEN** a tablet moves F into the trash
+- **THEN** a request of the token for a document in F gets status 404
 
 #### Scenario: Entry outside the grants
 - **WHEN** a scoped token reads the ID of a document outside its grants
