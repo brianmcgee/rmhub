@@ -9,9 +9,9 @@
 
 ## 2. Configuration
 
-- [ ] 2.1 Add the table `[limits]` with `pairing_per_minute`, `api_per_minute` and `render_per_minute` to `internal/config`. Verify with a test that the defaults are 10, 600 and 60, that -1 is accepted, and that 0 and -2 give an error that names the key.
-- [ ] 2.2 Add `trusted_proxies` to each listener. Verify with a test that an address and a CIDR network are accepted and that `proxy.local` gives an error that names the key.
-- [ ] 2.3 Add the new keys to the configuration table of `README.md`. Verify that each key of `internal/config` is in the table.
+- [x] 2.1 Add the table `[limits]` with `pairing_per_minute`, `api_per_minute` and `render_per_minute` to `internal/config`. Verify with a test that the defaults are 10, 600 and 60, that -1 is accepted, and that 0 and -2 give an error that names the key.
+- [x] 2.2 Add `trusted_proxies` to each listener. Verify with a test that an address and a CIDR network are accepted and that `proxy.local` gives an error that names the key.
+- [x] 2.3 Add the new keys to the configuration table of `README.md`. Verify that each key of `internal/config` is in the table.
 
 ## 3. Client address
 

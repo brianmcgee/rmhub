@@ -47,6 +47,7 @@ conditional write. A backend that accepts the write stops the server.
 | `listen.api.address` | `127.0.0.1:8081` | Address of the API listener. |
 | `listen.<name>.tls_cert_file` | | TLS certificate. Set it with `tls_key_file`, or set neither for plain HTTP. |
 | `listen.<name>.tls_key_file` | | TLS private key. |
+| `listen.<name>.trusted_proxies` | `[]` | Addresses and CIDR networks of the reverse proxies in front of the listener. The server reads the client address from `X-Forwarded-For` only if the connection comes from one of them. |
 | `admin.token_file` | | File with the admin token. Without it, each admin request gets status 401. |
 | `tablet.announced_host` | `local.appspot.com` | Host that discovery gives to the tablet. No scheme, no path. |
 | `tablet.check_files` | `truthful` | Answer of `check-files`: `truthful` or `none`. |
@@ -54,6 +55,9 @@ conditional write. A backend that accepts the write stops the server.
 | `api.max_upload_bytes` | `268435456` | Maximum size of a document upload through the API, in bytes. |
 | `render.cache_dir` | `$XDG_CACHE_HOME/rmhub/render` | Directory of the page render cache. Without `XDG_CACHE_HOME`, `~/.cache` is used. |
 | `render.cache_max_bytes` | `1073741824` | Maximum size of the render cache, in bytes. The oldest files are deleted first. |
+| `limits.pairing_per_minute` | `10` | Maximum number of pairing attempts of one client address in one minute. `-1` means no limit. |
+| `limits.api_per_minute` | `600` | Maximum number of API requests of one token in one minute. `-1` means no limit. |
+| `limits.render_per_minute` | `60` | Maximum number of page renders of one account in one minute. A page from the render cache does not count. `-1` means no limit. |
 
 The S3 settings are `endpoint`, `region` (default `us-east-1`),
 `bucket`, `prefix`, `path_style`, `access_key_id` and

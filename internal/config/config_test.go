@@ -1,8 +1,10 @@
 package config_test
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -121,6 +123,11 @@ func TestErrors(t *testing.T) {
 		{"negative upload limit", "[api]\nmax_upload_bytes = -1\n", "api.max_upload_bytes"},
 		{"negative blob limit", "[tablet]\nmax_blob_bytes = -1\n", "tablet.max_blob_bytes"},
 		{"negative cache limit", "[render]\ncache_max_bytes = -1\n", "render.cache_max_bytes"},
+		{"pairing limit 0", "[limits]\npairing_per_minute = 0\n", "limits.pairing_per_minute"},
+		{"API limit -2", "[limits]\napi_per_minute = -2\n", "limits.api_per_minute"},
+		{"render limit 0", "[limits]\nrender_per_minute = 0\n", "limits.render_per_minute"},
+		{"proxy host name", "[listen.api]\ntrusted_proxies = [\"proxy.local\"]\n", "listen.api.trusted_proxies"},
+		{"proxy bad network", "[listen.tablet]\ntrusted_proxies = [\"10.0.0.0/40\"]\n", "listen.tablet.trusted_proxies"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := config.Parse(tc.text)
@@ -165,5 +172,40 @@ func TestRenderSettings(t *testing.T) {
 	cfg, err = config.Parse("[render]\ncache_dir = \"/var/cache/r\"\ncache_max_bytes = 1000\n")
 	if err != nil || cfg.Render.CacheDir != "/var/cache/r" || cfg.Render.CacheMaxBytes != 1000 {
 		t.Fatalf("explicit: %+v %v", cfg.Render, err)
+	}
+}
+
+func TestLimits(t *testing.T) {
+	cfg, err := config.Parse("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Limits, (config.LimitsConfig{PairingPerMinute: 10, APIPerMinute: 600, RenderPerMinute: 60}); got != want {
+		t.Errorf("default limits = %+v, want %+v", got, want)
+	}
+	cfg, err = config.Parse("[limits]\npairing_per_minute = -1\napi_per_minute = 5\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Limits, (config.LimitsConfig{PairingPerMinute: -1, APIPerMinute: 5, RenderPerMinute: 60}); got != want {
+		t.Errorf("limits = %+v, want %+v", got, want)
+	}
+}
+
+func TestTrustedProxies(t *testing.T) {
+	cfg, err := config.Parse("[listen.tablet]\ntrusted_proxies = [\"127.0.0.1\", \"10.1.0.0/16\", \"::1\"]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := cfg.Listen.Tablet.Proxies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("10.1.0.0/16"), netip.MustParsePrefix("::1/128")}
+	if !slices.Equal(got, want) {
+		t.Errorf("Proxies = %v, want %v", got, want)
+	}
+	if p, err := cfg.Listen.API.Proxies(); err != nil || len(p) != 0 {
+		t.Errorf("default Proxies = %v, %v; want none", p, err)
 	}
 }
