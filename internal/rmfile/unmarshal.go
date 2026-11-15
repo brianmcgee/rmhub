@@ -30,6 +30,9 @@ func (rm *Rm) UnmarshalBinary(data []byte) error {
 		return err
 	}
 
+	if err := r.checkCount(nbLayers, minLayerLen); err != nil {
+		return err
+	}
 	rm.Layers = make([]Layer, nbLayers)
 	for i := uint32(0); i < nbLayers; i++ {
 		nbLines, err := r.readNumber()
@@ -37,6 +40,9 @@ func (rm *Rm) UnmarshalBinary(data []byte) error {
 			return err
 		}
 
+		if err := r.checkCount(nbLines, minLineLen); err != nil {
+			return err
+		}
 		rm.Layers[i].Lines = make([]Line, nbLines)
 		for j := uint32(0); j < nbLines; j++ {
 			line, err := r.readLine()
@@ -89,6 +95,24 @@ func (r *reader) checkHeader() error {
 	return nil
 }
 
+// The smallest sizes in bytes of a layer, a line and a point in a v3 or
+// v5 file.
+const (
+	minLayerLen = 4
+	minLineLen  = 20
+	pointLen    = 24
+)
+
+// checkCount returns an error if the remaining bytes cannot hold n items
+// of the size size. The check prevents a large allocation for a count
+// that the file cannot satisfy.
+func (r *reader) checkCount(n uint32, size int) error {
+	if int64(n)*int64(size) > int64(r.Len()) {
+		return errors.New("a count is larger than the file")
+	}
+	return nil
+}
+
 func (r *reader) readNumber() (uint32, error) {
 	var nb uint32
 	if err := binary.Read(r, binary.LittleEndian, &nb); err != nil {
@@ -132,6 +156,9 @@ func (r *reader) readLine() (Line, error) {
 		return line, nil
 	}
 
+	if err := r.checkCount(nbPoints, pointLen); err != nil {
+		return line, err
+	}
 	line.Points = make([]Point, nbPoints)
 
 	for i := uint32(0); i < nbPoints; i++ {
