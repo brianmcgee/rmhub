@@ -8,9 +8,16 @@ context: |
     Format code with `nix fmt`.
     Write every artefact in ASD-STE100 Simplified Technical English.
     Use the asd-ste100 skill.
+    The user documentation is in `docs/` and follows the Diátaxis system
+    (tutorials, how-to, reference, explanation). `docs/README.md` tells
+    which pages to update for each type of change.
+    Keep `docs/` in sync with each change.
 
 rules:
+    proposal:
+        - In the Impact section, name the pages in `docs/` that the change must update. If there are none, write that.
     tasks:
+        - If the change has an effect on the behavior that a user sees, add a task to update each affected page in `docs/`. Use the table in `docs/README.md`.
         - In the last task group, run `go test ./...` and `nix flake check`.
 
 operations:
