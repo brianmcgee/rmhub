@@ -8,8 +8,9 @@ You keep your notes on a server that you control.
 
 Early development. The server has accounts, API tokens, tablet pairing
 and Sync 1.5 for tablets, with change notifications. It has a library
-API with scoped tokens and a change feed for scripts and agents. It does
-not render documents yet.
+API with scoped tokens and a change feed for scripts and agents. It
+renders notebook pages and annotated PDF pages as images. It does not
+render EPUB pages.
 
 ## Run the server
 
@@ -179,6 +180,160 @@ $ rmhub account set-schema 4
 ```
 
 The server accepts root indexes of schema 3 and 4 for each setting.
+
+## Deploy on NixOS
+
+The flake exports the NixOS module `nixosModules.rmhub`. The file
+[`examples/nixos.nix`](examples/nixos.nix) is a full host configuration:
+TLS on the tablet listener with a certificate from Let's Encrypt, and the
+admin token from a secret file. The VM test `checks/nixos-module.nix`
+imports that file, so the example stays correct. Import the module and
+the example (or your copy of it) in a host:
+
+```nix
+{
+  inputs.rmhub.url = "github:brianmcgee/rmhub";
+  # in the host configuration:
+  #   imports = [ inputs.rmhub.nixosModules.rmhub ./rmhub.nix ];
+}
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `services.rmhub.enable` | `false` | Run `rmhub serve` as `rmhub.service`. |
+| `services.rmhub.package` | the flake package | The rmhub package. |
+| `services.rmhub.settings` | `{ }` | The TOML configuration (see [Configuration keys](#configuration-keys)). The module sets `data_dir = "/var/lib/rmhub"` and `render.cache_dir = "/var/cache/rmhub/render"`. |
+| `services.rmhub.credentials` | `{ }` | Secret files, from a name to a path on the host. Refer to a file in `settings` as `/run/credentials/rmhub.service/<name>`. |
+| `services.rmhub.openFirewall` | `false` | Open the TCP ports of both listeners. |
+
+Do not put a secret in `settings`: the settings go into the Nix store.
+The secret files can be readable by root only, because systemd reads
+them before the service user exists. The service runs as a dynamic user
+with systemd hardening. It does not set `MemoryDenyWriteExecute`,
+because the PDF renderer compiles WebAssembly to machine code.
+
+### TLS for the tablet
+
+rmfakecloud-proxy on the tablet checks the certificate of its upstream
+against the trusted roots of the tablet. A self-signed certificate
+fails, unless you add its CA to the tablet. Use one of these setups.
+
+**A public certificate on the tablet listener.** `examples/nixos.nix`
+gets a certificate through `security.acme` and gives it to rmhub as the
+credentials `tls-cert` and `tls-key`. systemd copies credentials at
+service start, so rmhub must restart after each renewal:
+
+```nix
+security.acme.certs."rmhub.example.org".reloadServices = [ "rmhub.service" ];
+```
+
+The tablet loses its notification connection at the restart and
+connects again.
+
+**A reverse proxy in front of a plain tablet listener.** Keep the tablet
+listener on the loopback interface without TLS, and let nginx terminate
+TLS. The proxy must pass websocket upgrades (the tablet gets change
+notifications through a websocket) and must allow bodies of at least
+256 MiB:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    server_name rmhub.example.org;
+    ssl_certificate     /var/lib/acme/rmhub.example.org/fullchain.pem;
+    ssl_certificate_key /var/lib/acme/rmhub.example.org/key.pem;
+
+    client_max_body_size 256m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 1h;
+        proxy_request_buffering off;
+    }
+}
+```
+
+With this setup, the `upstream` of the proxy on the tablet is
+`https://rmhub.example.org` (port 443).
+
+## Switch from rmfakecloud
+
+The switch changes one setting on the tablet. rmhub does not import data
+from rmfakecloud: the tablet uploads its library at the first sync. Keep
+rmfakecloud and its data unchanged until you are sure that you stay with
+rmhub.
+
+1. **Back up the library.** Download each document from rmfakecloud with
+   rmapi, with a separate rmapi configuration:
+
+   ```console
+   $ export RMAPI_HOST=https://rmfakecloud.example.org
+   $ export RMAPI_CONFIG=$HOME/.config/rmapi/rmfakecloud.conf
+   $ rmapi ls /
+   $ rmapi mget -o $HOME/rm-backup /
+   ```
+
+   The first `rmapi` command asks for a pairing code from rmfakecloud.
+
+2. **Create the rmhub user** and an owner token, as in
+   [First run](#first-run) step 3.
+
+3. **Create a pairing code** with the owner token:
+
+   ```console
+   $ rmhub pair
+   ```
+
+   The code expires after 5 minutes. Do steps 4 to 6 in that time, or
+   make a new code.
+
+4. **Change the upstream of the proxy** on the tablet to rmhub. Write the
+   old value down:
+
+   ```yaml
+   # configuration file of rmfakecloud-proxy on the tablet
+   upstream: https://rmhub.example.org:8443
+   ```
+
+5. **Restart the proxy** on the tablet:
+
+   ```console
+   # systemctl restart proxy
+   ```
+
+6. **Pair the tablet with the code.** The old device token of the tablet
+   is from rmfakecloud, and rmhub refuses it. If the tablet does not ask
+   for a code, disconnect it from the cloud in its settings, then connect
+   again and type the code.
+
+7. **Check the sync.** The first sync uploads the full library from the
+   tablet. This takes time for a large library. Then the library shows
+   on rmhub:
+
+   ```console
+   $ rmhub ls /
+   ```
+
+### Way back
+
+To go back to rmfakecloud, set `upstream` in the proxy configuration on
+the tablet to its old value and restart the proxy. Pair again with a
+code from rmfakecloud if the tablet asks.
+
+**Warning:** changes that you make while the tablet uses rmhub are not
+in rmfakecloud. They get there only when the tablet syncs with
+rmfakecloud again. A change that an API client made on rmhub and that
+the tablet did not sync is lost. Do not delete the rmfakecloud data
+before you are sure that you stay with rmhub.
 
 ## Client
 
