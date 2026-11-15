@@ -17,6 +17,7 @@ import (
 	"github.com/brianmcgee/rmhub/internal/libops"
 	"github.com/brianmcgee/rmhub/internal/library"
 	"github.com/brianmcgee/rmhub/internal/pairing"
+	"github.com/brianmcgee/rmhub/internal/ratelimit"
 	"github.com/brianmcgee/rmhub/internal/rendercache"
 	"github.com/brianmcgee/rmhub/internal/rootlog"
 	"github.com/brianmcgee/rmhub/internal/server"
@@ -68,7 +69,14 @@ func New(ctx context.Context, cfg *config.Config, stores *server.Stores, log *sl
 		Issuer:   tablet.NewIssuer(key),
 		log:      log,
 	}
-	a.Tablet = &tablet.Service{Accounts: a.Accounts, Devices: a.Devices, Pairing: a.Pairing, Issuer: a.Issuer, Log: log}
+	proxies, err := cfg.Listen.Tablet.Proxies()
+	if err != nil {
+		return nil, fmt.Errorf("listen.tablet.trusted_proxies: %w", err)
+	}
+	a.Tablet = &tablet.Service{
+		Accounts: a.Accounts, Devices: a.Devices, Pairing: a.Pairing, Issuer: a.Issuer, Log: log,
+		PairLimit: ratelimit.New(cfg.Limits.PairingPerMinute), Proxies: proxies,
+	}
 	a.Discovery = &tablet.Discovery{Host: cfg.Tablet.AnnouncedHost}
 	a.Hub = notify.New(log, a.Devices.Check)
 	a.Sync = &sync15.Service{

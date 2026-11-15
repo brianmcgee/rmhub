@@ -20,11 +20,11 @@
 
 ## 4. Pairing limit
 
-- [ ] 4.1 Write a failing test in `internal/app` that sends 11 pairing requests with wrong codes and expects status 429 with an empty body and a `Retry-After` header on request 11.
-- [ ] 4.2 Add the limit to `POST /token/json/2/device/new`, before the body is read. Verify that the test of 4.1 passes.
-- [ ] 4.3 Verify with a test that a pairing request through a trusted proxy with a different `X-Forwarded-For` address succeeds while the bucket of the first address is empty.
-- [ ] 4.4 Delete the record of a pairing code after its use. Verify with a test that the state store has no key with the prefix `pairing/` after a pairing, and that the test of two tablets with one code still passes.
-- [ ] 4.5 Delete each expired record when a new code is made. Verify with a test that an expired record is gone after the next code creation.
+- [x] 4.1 Write a failing test in `internal/app` that sends 11 pairing requests with wrong codes and expects status 429 with an empty body and a `Retry-After` header on request 11.
+- [x] 4.2 Add the limit to `POST /token/json/2/device/new`, before the body is read. Verify that the test of 4.1 passes.
+- [x] 4.3 Verify with a test that a pairing request through a trusted proxy with a different `X-Forwarded-For` address succeeds while the bucket of the first address is empty.
+- [x] 4.4 Delete the record of a pairing code after its use. Verify with a test that the state store has no key with the prefix `pairing/` after a pairing, and that the test of two tablets with one code still passes.
+- [x] 4.5 Delete each expired record when a new code is made. Verify with a test that an expired record is gone after the next code creation.
 
 ## 5. API and render limits
 

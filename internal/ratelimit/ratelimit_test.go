@@ -44,6 +44,20 @@ func TestBurstAndRefill(t *testing.T) {
 	}
 }
 
+func TestRetryAfter(t *testing.T) {
+	for wait, want := range map[time.Duration]string{
+		0:                       "1",
+		100 * time.Millisecond:  "1",
+		time.Second:             "1",
+		1001 * time.Millisecond: "2",
+		6 * time.Second:         "6",
+	} {
+		if got := RetryAfter(wait); got != want {
+			t.Errorf("RetryAfter(%v) = %q, want %q", wait, got, want)
+		}
+	}
+}
+
 func TestBucketDoesNotGrowAboveLimit(t *testing.T) {
 	l, c := newLimiter(2)
 	l.Allow("a")

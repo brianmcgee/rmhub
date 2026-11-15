@@ -2,6 +2,8 @@
 package ratelimit
 
 import (
+	"math"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -41,6 +43,12 @@ func New(n int) *Limiter {
 		return nil
 	}
 	return &Limiter{n: float64(n), now: time.Now, buckets: map[string]bucket{}}
+}
+
+// RetryAfter returns the value of the Retry-After header for the wait
+// time: the seconds as an integer, 1 or more.
+func RetryAfter(wait time.Duration) string {
+	return strconv.Itoa(max(1, int(math.Ceil(wait.Seconds()))))
 }
 
 // SetClock sets the clock. Tests use it.

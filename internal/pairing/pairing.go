@@ -62,8 +62,34 @@ func randomCode() string {
 	return b.String()
 }
 
-// Create makes a code for the account.
+// maxSweep is the maximum number of records that one Create reads to
+// find expired records.
+const maxSweep = 1000
+
+// sweep deletes the expired records. An error is not a failure of the
+// caller: the next call tries again.
+func (s *Store) sweep(ctx context.Context) {
+	keys, err := s.st.List(ctx, key(""), "", maxSweep)
+	if err != nil {
+		return
+	}
+	now := s.now()
+	for _, k := range keys {
+		b, _, err := s.st.Get(ctx, k)
+		if err != nil {
+			continue
+		}
+		var rec record
+		if json.Unmarshal(b, &rec) != nil || !now.Before(rec.ExpiresAt) {
+			_ = s.st.Delete(ctx, k)
+		}
+	}
+}
+
+// Create makes a code for the account. It also deletes the expired
+// records: a code that nobody uses has no other end.
 func (s *Store) Create(ctx context.Context, account string) (Code, error) {
+	s.sweep(ctx)
 	exp := s.now().UTC().Add(Lifetime).Truncate(time.Second)
 	b, err := json.Marshal(record{Account: account, ExpiresAt: exp})
 	if err != nil {
@@ -98,8 +124,8 @@ func Normalize(code string) (string, bool) {
 	return code, true
 }
 
-// Use marks the code as used by the device and returns its account. Only
-// one use of a code can succeed.
+// Use marks the code as used by the device, deletes its record and
+// returns its account. Only one use of a code can succeed.
 func (s *Store) Use(ctx context.Context, code, deviceID string) (string, error) {
 	code, ok := Normalize(code)
 	if !ok {
@@ -133,5 +159,9 @@ func (s *Store) Use(ctx context.Context, code, deviceID string) (string, error) 
 	} else if err != nil {
 		return "", err
 	}
+	// The conditional write selects the one device that gets the code.
+	// The state store has no conditional delete, so delete after it. If
+	// the delete fails, the record stays as a used record.
+	_ = s.st.Delete(ctx, key(code))
 	return rec.Account, nil
 }
